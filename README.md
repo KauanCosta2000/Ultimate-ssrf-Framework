@@ -1,0 +1,2 @@
+# Ultimate-SSRF-Arsenal-Multi-Target-Automated-SSRF-Exploitation-Framework
+Ultimate SSRF Arsenal is a powerful, dynamic, and fully automated SSRF (Server-Side Request Forgery) testing framework built with Python and Playwright. It features intelligent endpoint discovery, parameter fuzzing, cloud metadata extraction, protocol smuggling, blind SSRF detection via out-of-band callbacks, and multi-target scanning.
