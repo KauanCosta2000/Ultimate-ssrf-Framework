@@ -145,7 +145,7 @@ MIT License – see LICENSE file.
 👤 Author
 
 Created by belladonnask  
-GitHub: @belladonnask
+GitHub: @KauanCosta2000
 
 ⭐ Show Your Support
 
