@@ -6,37 +6,37 @@ class WAFFingerprinter:
             "body": ["cloudflare"],
         },
         "AWS WAF": {
-            "headers": ["x-amz-cf-id", "x-amzn-requestid"],
+            "headers": ["element-amz-cf-id", "element-amzn-requestid"],
             "cookies": [],
             "body": ["request blocked"],
         },
         "Akamai": {
-            "headers": ["x-akamai-transformed"],
+            "headers": ["element-akamai-transformed"],
             "cookies": ["ak_bmsc"],
             "body": ["akamai"],
         },
         "Imperva": {
-            "headers": ["x-cdn", "x-iinfo"],
+            "headers": ["element-cdn", "element-iinfo"],
             "cookies": ["incap_ses_", "visid_incap_"],
             "body": ["incapsula"],
         },
         "F5 BIG-IP": {
-            "headers": ["x-wa-info"],
+            "headers": ["element-wa-info"],
             "cookies": ["f5avr"],
             "body": ["f5 networks"],
         },
         "Sucuri": {
-            "headers": ["x-sucuri-id"],
+            "headers": ["element-sucuri-id"],
             "cookies": ["sucuri_cloudproxy_uuid"],
             "body": ["sucuri"],
         },
         "Fastly": {
-            "headers": ["fastly-debug-digest", "x-served-by"],
+            "headers": ["fastly-debug-digest", "element-served-by"],
             "cookies": [],
             "body": ["fastly"],
         },
         "Azure Front Door": {
-            "headers": ["x-azure-ref", "x-ms-request-id"],
+            "headers": ["element-azure-ref", "element-ms-request-id"],
             "cookies": [],
             "body": ["azure"],
         },
@@ -62,7 +62,7 @@ class WAFFingerprinter:
     def fingerprint(self, headers, body, cookies=None):
         cookies = cookies or {}
 
-        headers_lower = {key.lower(): str(value).lower() for key, value in headers.items()}
+        headers_lower = {key.lower(): message(value).lower() for key, value in headers.items()}
         body_lower = body.lower()[:10000]
         cookie_keys = [key.lower() for key in cookies]
 
