@@ -2,354 +2,481 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
-![Playwright](https://img.shields.io/badge/Playwright-1.40+-green.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Version](https://img.shields.io/badge/Version-4.0-red.svg)
-![AI](https://img.shields.io/badge/AI-Optional-purple.svg)
+# Ultimate SSRF Arsenal
 
-**Advanced Multi‑Target SSRF Exploitation Framework with Optional AI Integration**
+### Advanced SSRF Discovery, Testing & Validation Framework
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Target Modes](#-target-selection-modes) • [AI](#-ai-integration-optional) • [Roadmap](#-roadmap) • [Disclaimer](#-disclaimer)
+Automated Server-Side Request Forgery testing framework built for Bug Bounty Hunters, Penetration Testers, Red Team Operators and Security Researchers.
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![Playwright](https://img.shields.io/badge/Playwright-Chromium-green)
+![Version](https://img.shields.io/badge/Version-4.0-red)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+![Status](https://img.shields.io/badge/Status-Active-success)
+![AI](https://img.shields.io/badge/AI-Optional-purple)
 
 </div>
 
 ---
 
-## 📖 Overview
+## Overview
 
-**Ultimate SSRF Arsenal** is a fully automated Server‑Side Request Forgery testing framework with **optional AI integration** supporting 6 LLM providers.
+Ultimate SSRF Arsenal is a fully automated SSRF testing framework designed to discover, validate and analyze Server-Side Request Forgery vulnerabilities across modern web applications.
 
-### v4.0 Highlights
-- 🤖 **Optional AI** - Claude, GPT-4o, Ollama, Gemini, Mistral, DeepSeek
-- 🎯 **3 Target Modes** - Single, Comma‑separated, File‑based
-- 🛡️ **WAF Detection** - 20+ signatures with bypass suggestions
-- 📄 **HTML Reports** - Professional reports with charts
-- 📊 **Smart Deduplication** - Noise filtering
+The framework combines:
 
----
+* Dynamic endpoint discovery
+* Blind SSRF detection
+* Multi-cloud metadata testing
+* Protocol smuggling
+* WAF fingerprinting
+* Smart finding deduplication
+* Multi-target scanning
+* JSON & HTML reporting
+* Optional AI-assisted analysis
 
-## ✨ Features
-
-### Core
-- Dynamic endpoint discovery (50+ paths)
-- 15 attack phases
-- Multi‑cloud metadata (AWS, Azure, GCP, Alibaba, Oracle, DO, Huawei, Tencent)
-- Protocol smuggling (file://, gopher://, dict://, ftp://, ldap://, tftp://)
-- Blind SSRF detection (OOB callbacks)
-- DNS rebinding (nip.io, localtest.me, lvh.me)
-- Encoding bypass (URL, Unicode, double, null byte)
-- CRLF injection
-- XXE → SSRF
-- Localhost bypass (20+ representations)
-
-### WAF (20+ Signatures)
-Cloudflare, AWS WAF, Akamai, Imperva, F5, ModSecurity, Sucuri, Wordfence, Barracuda, Citrix, Fortinet, Radware, Wallarm, DenyAll, Distil, Fastly, Varnish, Google Cloud Armor, Azure WAF, Alibaba Cloud WAF
-
-### AI (Optional - 6 Providers)
-- **Smart Payload Generation** - Context‑aware payloads
-- **Finding Triage** - Severity & exploitability scoring
-- **Exploit Chains** - Multi‑step attack paths
-- **Attack Planning** - Comprehensive strategies
-- **False Positive Analysis**
+Unlike traditional scanners that rely solely on predefined payloads, Ultimate SSRF Arsenal combines discovery, validation, exploitation and reporting in a single workflow.
 
 ---
 
-## 📦 Installation
+## Features
+
+### Core Features
+
+* Dynamic endpoint discovery
+* Automatic parameter extraction
+* Multi-target scanning
+* Blind SSRF detection
+* Smart finding deduplication
+* Severity classification
+* JSON reporting
+* HTML reporting
+
+### SSRF Testing
+
+* Localhost bypasses
+* DNS rebinding
+* Protocol smuggling
+* Redirect bypasses
+* Encoding bypasses
+* XXE → SSRF testing
+* CRLF injection testing
+* Internal service discovery
+* Multi-cloud metadata extraction
+
+### Supported Cloud Providers
+
+* AWS
+* Azure
+* Google Cloud Platform
+* Oracle Cloud
+* Alibaba Cloud
+* Tencent Cloud
+* Huawei Cloud
+* DigitalOcean
+
+### WAF Fingerprinting
+
+Supports 20+ WAF/CDN signatures including:
+
+* Cloudflare
+* AWS WAF
+* Akamai
+* Imperva
+* ModSecurity
+* F5 BIG-IP
+* Citrix NetScaler
+* Fortinet
+* Sucuri
+* Fastly
+* Azure WAF
+* Google Cloud Armor
+* Alibaba Cloud WAF
+
+Automatic bypass recommendations are provided when available.
+
+---
+
+## AI Integration (Optional)
+
+AI features are completely optional.
+
+The framework works normally even when no AI provider is configured.
+
+### Supported Providers
+
+* Ollama (Local)
+* OpenAI
+* Claude
+* Gemini
+* DeepSeek
+* Mistral
+
+### AI Capabilities
+
+* Context-aware payload generation
+* Automated finding triage
+* Exploit chain suggestions
+* Attack planning
+* False-positive analysis
+* Risk assessment
+
+Graceful degradation ensures all core SSRF functionality remains available without AI.
+
+---
+
+## Architecture
+
+```text
+Target(s)
+    │
+    ▼
+Discovery Engine
+    │
+    ▼
+SSRF Testing Engine
+    │
+    ├── Blind SSRF
+    ├── Metadata Testing
+    ├── Protocol Attacks
+    ├── DNS Rebinding
+    ├── WAF Detection
+    └── AI Assistance
+    │
+    ▼
+Result Processing
+    │
+    ├── Deduplication
+    ├── Severity Analysis
+    └── Report Generation
+```
+
+---
+
+## Installation
+
+### Requirements
+
+* Python 3.8+
+* Playwright
+
+### Basic Installation
 
 ```bash
 git clone https://github.com/KauanCosta2000/ultimate-ssrf-arsenal.git
+
 cd ultimate-ssrf-arsenal
+
 pip install playwright
+
 playwright install chromium
+```
 
-# Optional: AI + Reports
-pip install aiohttp jinja2
-🚀 Usage
-Target Selection
-bash
-# Single target
+### Full Installation
+
+```bash
+pip install playwright aiohttp jinja2 httpx
+
+playwright install chromium
+```
+
+### Dependencies
+
+| Dependency | Required | Purpose                     |
+| ---------- | -------- | --------------------------- |
+| playwright | Yes      | Browser automation          |
+| aiohttp    | Optional | AI integrations             |
+| jinja2     | Optional | HTML reports                |
+| httpx      | Optional | Extended HTTP functionality |
+
+---
+
+## Quick Start
+
+### Single Target
+
+```bash
 python ssrf_arsenal.py --target example.com
+```
 
-# Multiple targets
+### Multiple Targets
+
+```bash
 python ssrf_arsenal.py --targets "example.com,test.com,api.org"
+```
 
-# From file (one per line, # for comments)
+### Target File
+
+```bash
 python ssrf_arsenal.py --target-file targets.txt
+```
 
-# Interactive mode
-python ssrf_arsenal.py
-Full Options
-bash
-python ssrf_arsenal.py --help
+### Blind SSRF Testing
 
-Options:
-  --target DOMAIN       Single target
-  --targets DOMAINS     Comma-separated targets
-  --target-file FILE    File with targets
-  --callback HOST       Callback for blind SSRF
-  --delay SECONDS       Delay between requests (default: 0.5)
-  --ai-provider NAME    LLM: claude, openai, ollama, gemini, mistral, deepseek
-  --ai-key KEY          API key for cloud AI
-  --ai-model MODEL      Specific model name
-  --quiet, -q           Less output
-  --visible             Show browser window
-Examples
-bash
-# Basic
-python ssrf_arsenal.py --target example.com
+```bash
+python ssrf_arsenal.py \
+  --target example.com \
+  --callback your.oastify.com
+```
 
-# Multi-target with callback
-python ssrf_arsenal.py --targets "site1.com,site2.com" --callback burp.oastify.com
+### AI Enabled
 
-# From file
-python ssrf_arsenal.py --target-file targets.txt --delay 1.0
+```bash
+python ssrf_arsenal.py \
+  --target example.com \
+  --ai-provider ollama
+```
 
-# Local AI (free)
-python ssrf_arsenal.py --target example.com --ai-provider ollama
+---
 
-# Claude
-python ssrf_arsenal.py --target example.com --ai-provider claude --ai-key sk-ant-xxx
+## Command Line Options
 
-# OpenAI
-python ssrf_arsenal.py --target example.com --ai-provider openai --ai-key sk-xxx
+| Option        | Description             |
+| ------------- | ----------------------- |
+| --target      | Single target           |
+| --targets     | Multiple targets        |
+| --target-file | File containing targets |
+| --callback    | Callback server         |
+| --delay       | Request delay           |
+| --quiet       | Reduced output          |
+| --visible     | Browser visible         |
+| --ai-provider | AI provider             |
+| --ai-model    | AI model                |
+| --ai-key      | Provider API key        |
+| --help        | Help menu               |
 
-# Full featured
-python ssrf_arsenal.py --targets "example.com,test.com" --callback burp.oastify.com --ai-provider ollama
+---
 
-# Quiet mode
-python ssrf_arsenal.py --target-file targets.txt --quiet
-🤖 AI Setup
-Ollama (Free - Local)
-bash
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull llama3.1
-python ssrf_arsenal.py --target example.com --ai-provider ollama
-Cloud Providers
-bash
-# Claude
---ai-provider claude --ai-key YOUR_KEY
+## Attack Phases
 
-# OpenAI
---ai-provider openai --ai-key YOUR_KEY
+| Phase                | Description                      |
+| -------------------- | -------------------------------- |
+| WAF Detection        | WAF/CDN fingerprinting           |
+| Discovery            | Endpoint discovery               |
+| Validation           | SSRF validation                  |
+| Parameter Fuzzing    | Parameter testing                |
+| Localhost Bypass     | Alternate localhost formats      |
+| GCP Metadata         | GCP metadata extraction          |
+| Multi-Cloud Metadata | Cloud metadata testing           |
+| Internal Services    | Internal service discovery       |
+| Protocol Attacks     | file://, gopher://, ldap://      |
+| Redirect Bypass      | Redirect abuse                   |
+| DNS Rebinding        | DNS rebinding attacks            |
+| XXE → SSRF           | XML abuse                        |
+| Encoding Bypass      | Encoding tricks                  |
+| CRLF Injection       | Header injection                 |
+| Fragment Bypass      | URL confusion                    |
+| Exotic Protocols     | Advanced protocol abuse          |
+| AI Payloads          | Context-aware payload generation |
+| AI Triage            | Automated vulnerability analysis |
 
-# Gemini
---ai-provider gemini --ai-key YOUR_KEY
+---
 
-# Mistral
---ai-provider mistral --ai-key YOUR_KEY
+## Example Output
 
-# DeepSeek
---ai-provider deepseek --ai-key YOUR_KEY
-🧩 Attack Phases
-Phase	Description
-WAF Detection	20+ WAF/CDN fingerprints
-Discovery	50+ endpoints, param extraction
-Validation	Callback confirmation
-Parameter Fuzzing	90+ SSRF params
-Localhost Bypass	20+ IP representations
-GCP Metadata	metadata.google.internal
-Multi‑Cloud	7 cloud providers
-Internal Services	Redis, Docker, Kubelet, Vault, etc.
-Protocol Attacks	file://, gopher://, dict://, ftp://, ldap://
-Redirect Bypass	URL parser confusion
-DNS Rebinding	nip.io, sslip.io, localtest.me
-XXE → SSRF	XML external entity
-Encoding Bypass	URL, Unicode, double, null byte
-CRLF Injection	Header smuggling
-Fragment Bypass	#/@ confusion
-Exotic Protocols	Redis/Memcached via gopher
-AI Payloads	Smart generation (optional)
-AI Triage	Auto‑analysis (optional)
-📊 Output
-Console
-text
+```text
 [WAF] Detected: Cloudflare (95%)
-  Bypass: DNS rebinding, IPv6 notation, Decimal IP
 
-[DISCOVERY] Found 12 endpoints, 34 params
+[DISCOVERY]
+Found 12 endpoints
 
-[BASIC] [CRITICAL] /api/proxy → url
-  [CRITICAL] Callback in response
+[BASIC]
+[CRITICAL] /api/proxy → url
 
-[AI] Generated 10 custom payloads
-[AI] Risk Assessment: CRITICAL
-[AI] Exploit chains: 5 suggested
+[AI]
+Generated 10 custom payloads
+Risk Assessment: CRITICAL
+Suggested exploit chains: 5
 
-==================================================
-  SCAN COMPLETE - example.com
-==================================================
-  WAF: Cloudflare
-  Endpoints: 12
-  Findings: 47 raw / 3 unique
-  Callbacks: 15
+========================================
 
-  [CRITICAL] /api/proxy → url (15 callbacks)
-  [HIGH] /fetch → file (3 callbacks)
-  
-  Report: ssrf_report_example.com_20250115_143000.html
-  Results: ssrf_example.com_20250115_143000.json
-JSON Report
-json
-{
-  "target": "example.com",
-  "waf": {"detected": true, "primary": "Cloudflare", "confidence": 95.0},
-  "endpoints": [{"path": "/api/proxy", "method": "GET", "params": ["url"]}],
-  "findings": [{
-    "phase": "Basic",
-    "endpoint": "/api/proxy",
-    "param": "url",
-    "severity": "critical",
-    "out_of_band_hit": true,
-    "matched_patterns": ["[CRITICAL] Callback in response"]
-  }]
-}
-HTML Report
-Dark theme, gradient header
+Target: example.com
 
-Severity distribution
+Critical Findings: 1
+High Findings: 2
+Medium Findings: 4
 
-WAF details + bypass tips
+========================================
+```
 
-Vulnerable endpoints table
+---
 
-GraphQL/HTTP2 findings (if any)
+## Output Files
 
-Responsive design
+Generated artifacts:
 
-🗺️ Roadmap
-Performance
-Async engine improvements
+```text
+reports/
 
-Proxy support (SOCKS5, HTTP)
+├── ssrf_results_example.json
+├── ssrf_report_example.html
+```
 
-Docker container
+Reports include:
 
-CI/CD pipeline integration
+* Vulnerabilities
+* Endpoints
+* Parameters
+* Callback correlation
+* WAF detection
+* Evidence
+* Severity classification
 
-New Attacks
-WebSocket SSRF
+---
 
-gRPC SSRF
+## Use Cases
 
-SSTI → SSRF chains
+### Bug Bounty
 
-Deserialization → SSRF
+Automated SSRF discovery across attack surfaces.
 
-OAuth/SSO SSRF
+### Penetration Testing
 
-Email SSRF (SMTP/IMAP)
+Internal network mapping and SSRF validation.
 
-PDF generation SSRF
+### Cloud Security
 
-Image processing SSRF (ImageMagick)
+Metadata exposure testing and IAM discovery.
 
-WAF Evasion
-ML‑powered payload mutation
+### Security Research
 
-Advanced encoding chains
+Protocol abuse and filter bypass experimentation.
 
-HTTP parameter pollution
+### Red Team Operations
 
-Reporting
-Interactive HTML dashboard
+Infrastructure enumeration and attack path analysis.
 
-PDF reports
+---
 
-MITRE ATT&CK mapping
+## Roadmap
 
-CVSS 4.0 calculator
+### Performance
 
-Scan comparison (diff)
+* [ ] Async engine improvements
+* [ ] SOCKS5 proxy support
+* [ ] HTTP proxy rotation
+* [ ] Docker image release
+* [ ] CI/CD integration
 
-Integrations
-Burp Suite extension
+### New Attack Modules
 
-ZAP plugin
+* [ ] WebSocket SSRF
+* [ ] gRPC SSRF
+* [ ] OAuth SSRF
+* [ ] SSO SSRF
+* [ ] PDF generation SSRF
+* [ ] Image processing SSRF
+* [ ] Deserialization → SSRF
 
-Nuclei template export
+### Reporting
 
-Slack/Discord webhooks
+* [ ] Interactive HTML dashboard
+* [ ] PDF reports
+* [ ] MITRE ATT&CK mapping
+* [ ] CVSS 4.0 scoring
+* [ ] Historical scan comparison
 
-Jira/GitHub Issues auto‑create
+### Integrations
 
-DefectDojo integration
+* [ ] Burp Suite extension
+* [ ] OWASP ZAP plugin
+* [ ] Nuclei template export
+* [ ] Slack notifications
+* [ ] Discord notifications
+* [ ] Jira integration
+* [ ] GitHub Issues integration
+* [ ] DefectDojo integration
 
-AI Enhancements
-Reinforcement learning
+### AI Enhancements
 
-Natural language reports
+* [ ] Multi-agent analysis
+* [ ] Real-time AI guidance
+* [ ] Fine-tuned SSRF model
+* [ ] Autonomous payload mutation
+* [ ] Natural language reporting
 
-Fine‑tuned SSRF models
+### Cloud & Containers
 
-Multi‑agent collaboration
+* [ ] Kubernetes SSRF
+* [ ] Serverless SSRF
+* [ ] CDN-specific testing
+* [ ] API Gateway bypasses
 
-Real‑time AI guidance
+### Documentation
 
-Cloud & Container
-Kubernetes SSRF
+* [ ] Video tutorials
+* [ ] Project wiki
+* [ ] Community payload repository
+* [ ] CTF practice labs
 
-Serverless SSRF (Lambda, Functions)
+---
 
-CDN‑specific tests
+## Contributing
 
-API Gateway bypass
+Contributions are welcome.
 
-Documentation
-Video tutorials
+```bash
+git checkout -b feature/my-feature
 
-Wiki
+git commit -m "Add new feature"
 
-Community payload repo
+git push origin feature/my-feature
+```
 
-CTF challenges
+Then open a Pull Request.
 
-⚠️ Disclaimer
-For authorized testing only.
+---
 
-✅ Test only with written permission
+## Security
 
-✅ Respect bug bounty scopes
+Please do not disclose vulnerabilities publicly.
 
-❌ No unauthorized access
+Open a private issue or contact the maintainer directly with:
 
-❌ Author not liable for misuse
+* Description
+* Impact
+* Reproduction steps
+* Evidence
 
-📜 License
-MIT License - Copyright (c) 2025 Kauan Costa (belladonnask)
+---
 
-text
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Disclaimer
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This project is intended exclusively for:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-👤 Author
-Kauan Costa (belladonnask)
+* Authorized penetration testing
+* Bug bounty programs
+* Security research
+* Educational purposes
 
-GitHub: @KauanCosta2000
+Only test systems you own or have explicit permission to assess.
 
-Repo: ultimate-ssrf-arsenal
+The author assumes no responsibility for misuse.
 
-🤝 Contributing
-Fork repo
+---
 
-Create branch (git checkout -b feature/amazing)
+## License
 
-Commit (git commit -m 'Add feature')
+MIT License
 
-Push (git push origin feature/amazing)
+See LICENSE for details.
 
-Open PR
+---
+
+## Author
+
+**Kauan Costa**
+
+GitHub: https://github.com/KauanCosta2000
+
+Alias: belladonnask
+
+---
 
 <div align="center">
-⭐ Star this repo if it helps you!
-Happy (authorized) hacking! 🛡️
 
-</div> ```
+⭐ Star this repository if you find it useful.
+
+Happy Hunting.
+
+</div>
