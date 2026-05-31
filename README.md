@@ -73,6 +73,25 @@ playwright install chromium
 python ssrf_arsenal.py --target example.com
 ```
 
+## 📸 Demo
+
+<div align="center">
+
+![Ultimate SSRF Framework Demo](docs/demo.gif)
+
+</div>
+
+### Example Scan
+
+The framework automatically discovers SSRF candidates, performs validation, applies bypass techniques and generates structured reports for further analysis.
+
+Supported outputs:
+
+* Console Output
+* JSON Reports
+* HTML Reports
+
+
 ---
 
 # 📖 Overview
