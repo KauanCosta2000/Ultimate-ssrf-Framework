@@ -39,6 +39,9 @@ Ultimate SSRF Arsenal is a fully automated SSRF testing framework designed to di
 
 ## Overview
 
+## Demo
+![Demo](docs/demo.gif)
+
 The framework combines:
 
 * Dynamic endpoint discovery
