@@ -8,6 +8,7 @@
 ![Version](https://img.shields.io/badge/Version-v4.2--experimental-orange.svg)
 ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 ![AI](https://img.shields.io/badge/AI-Enhanced-purple.svg)
+![CI](https://github.com/KauanCosta2000/Ultimate-ssrf-Framework/actions/workflows/python-ci.yml/badge.svg)
 
 ### 🛡️ Advanced SSRF Discovery, Validation & Analysis Framework
 
