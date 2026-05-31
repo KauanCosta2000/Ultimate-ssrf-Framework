@@ -59,12 +59,6 @@ Ultimate SSRF Framework is designed to discover, validate and analyze Server-Sid
 
 ---
 
-# 📸 Demo
-
-![Demo](docs/demo.png)
-
----
-
 # ⚡ Quick Start
 
 ```bash
