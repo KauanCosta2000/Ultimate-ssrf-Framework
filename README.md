@@ -592,6 +592,11 @@ Repository: https://github.com/KauanCosta2000/Ultimate-ssrf-Framework
 
 ---
 
+## Contact
+
+- GitHub: https://github.com/KauanCosta2000
+- LinkedIn: https://linkedin.com/in/kauan-costa-105b12345
+
 <div align="center">
 
 ⭐ Star the repository if you find it useful.
