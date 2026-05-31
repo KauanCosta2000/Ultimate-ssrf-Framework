@@ -137,10 +137,20 @@ python ssrf_arsenal.py --help
 --target-file, -f      File containing targets (one target per line)
 ```
 
-### Callback Server
+### Callback / OAST
 
 ```text
 --callback, -c         Out-of-band callback host
+--collaborator         Alias for OAST callback host
+--burp-collaborator    Burp Collaborator host
+```
+
+Example:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--burp-collaborator abc123.burpcollaborator.net
 ```
 
 ### Proxy Support
@@ -180,178 +190,17 @@ python ssrf_arsenal.py --help
 --output, -o           Output directory
 ```
 
-## Output Directory
-
-By default, reports are generated in the current working directory.
-
-To save reports in a specific location:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---output reports
-```
-
-Example output:
-
-```text
-reports/
-- ssrf_report_example.com_20260531_120000.html
-- ssrf_example.com_20260531_120000.json
-- nuclei_example.com.yaml
-- siem_example.com.cef
-- api_report_example.com.json
-- attack_map_example.com.gexf
-```
-
-### Example
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---callback your-callback.oastify.com \
---output reports \
---export-nuclei \
---export-siem \
---export-json-api \
---attack-map
-```
-
-### Callback Server
-
-```text
---callback, -c
-```
-
-Used for blind SSRF validation.
-
----
-
-### Proxy Support
-
-```text
---proxy, -p
-
---proxy-file
-
---proxy-type
-```
-
-Examples:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---proxy http://127.0.0.1:8080
-```
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---proxy socks5://127.0.0.1:9050
-```
-
----
-
-### AI Integration
-
-Supported providers:
-
-```text
-claude
-openai
-ollama
-gemini
-mistral
-deepseek
-none
-```
-
-Example:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---ai-provider ollama
-```
-
----
-
-### Feature Control
-
-Disable specific modules:
-
-```text
---no-waf
---no-websocket
---no-grpc
---no-k8s
---no-serverless
---no-ai
-```
-
-Example:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---no-ai \
---no-websocket
-```
-
----
-
-### Output Control
-
-```text
---quiet
---visible
---delay
-```
-
-Example:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---quiet
-```
-
----
-
-### Export Options
-
-```text
---export-nuclei
-
---export-siem
-
---export-json-api
-
---attack-map
-```
-
-Example:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---export-nuclei \
---export-siem \
---attack-map
-```
-
 ---
 
 ## Reporting
 
 The framework can generate:
 
-- HTML Reports
-- JSON Reports
-- Nuclei Templates
-- SIEM CEF Exports
-- Attack Maps
+* HTML Reports
+* JSON Reports
+* Nuclei Templates
+* SIEM CEF Exports
+* Attack Maps
 
 Use `--output` to specify where generated files should be saved:
 
@@ -369,19 +218,21 @@ Generated files may include:
 
 ```text
 reports/
-- ssrf_example.com_YYYYMMDD_HHMMSS.json
-- ssrf_report_example.com_YYYYMMDD_HHMMSS.html
-- nuclei_example.com.yaml
-- siem_example.com.cef
-- api_report_example.com.json
-- attack_map_example.com.gexf
+ - ssrf_example.com_YYYYMMDD_HHMMSS.json
+ - ssrf_report_example.com_YYYYMMDD_HHMMSS.html
+ - nuclei_example.com.yaml
+ - siem_example.com.cef
+ - api_report_example.com.json
+ - attack_map_example.com.gexf
 ```
 
-Example:
+Full example:
 
 ```bash
 python ssrf_arsenal.py \
 --target example.com \
+--callback your-callback.oastify.com \
+--output reports \
 --export-nuclei \
 --export-siem \
 --export-json-api \
