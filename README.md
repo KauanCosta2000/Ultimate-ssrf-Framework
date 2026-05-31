@@ -326,7 +326,7 @@ The author assumes no responsibility for misuse or damages caused by this softwa
 
 # Roadmap
 
-### v2.x
+### v3.x
 
 - [x] 15 SSRF attack phases
 - [x] Multi-cloud metadata testing
@@ -334,15 +334,54 @@ The author assumes no responsibility for misuse or damages caused by this softwa
 - [x] Blind SSRF correlation
 - [x] XXE → SSRF testing
 - [x] Protocol smuggling support
+- [x] Async scanning engine
+- [x] Automatic WAF fingerprinting
+- [x] HTTP/2 request smuggling module
+- [x] GraphQL SSRF testing
+- [x] HTML report generation
+- [x] Burp Suite extension
+
 
 ### Upcoming
 
-- [ ] Async scanning engine
-- [ ] Automatic WAF fingerprinting
-- [ ] HTTP/2 request smuggling module
-- [ ] GraphQL SSRF testing
-- [ ] HTML report generation
-- [ ] Burp Suite extension
+## 🚀 Upcoming Features
+
+### AI & Automation
+
+* [ ] Local LLM integration (Ollama)
+* [ ] AI-assisted payload generation
+* [ ] AI-powered finding triage
+* [ ] Automatic exploit chain suggestions
+* [ ] Context-aware SSRF attack planning
+
+### Advanced SSRF Research
+
+* [ ] AWS IMDSv2 bypass testing
+* [ ] Open Redirect → SSRF chaining
+* [ ] WebSocket SSRF testing
+* [ ] SSRF through PDF generators
+* [ ] SSRF through XML parsers
+
+### Recon & Discovery
+
+* [ ] JavaScript endpoint intelligence
+* [ ] Automatic parameter prioritization
+* [ ] GraphQL schema discovery
+* [ ] API surface mapping
+
+### Cloud Security
+
+* [ ] Kubernetes exploitation module
+* [ ] Service mesh discovery
+* [ ] Container metadata extraction
+* [ ] Cloud IAM enumeration
+
+### Visualization
+
+* [ ] Internal network graph generation
+* [ ] Attack path visualization
+* [ ] Interactive HTML dashboard
+* [ ] Live callback monitoring panel
 
 ---
 
