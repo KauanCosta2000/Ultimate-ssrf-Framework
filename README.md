@@ -180,6 +180,30 @@ python ssrf_arsenal.py --help
 --output, -o           Output directory
 ```
 
+## Output Directory
+
+By default, reports are generated in the current working directory.
+
+To save reports in a specific location:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--output reports
+```
+
+Example output:
+
+```text
+reports/
+- ssrf_report_example.com_20260531_120000.html
+- ssrf_example.com_20260531_120000.json
+- nuclei_example.com.yaml
+- siem_example.com.cef
+- api_report_example.com.json
+- attack_map_example.com.gexf
+```
+
 ### Example
 
 ```bash
