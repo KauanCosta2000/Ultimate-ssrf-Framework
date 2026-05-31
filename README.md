@@ -364,8 +364,8 @@ Developed by Belladonnask
 GitHub:
 https://github.com/KauanCosta2000
 
-LinkedIn:
-https://linkedin.com/in/kauan-costa
+LinkedIn: 
+https://linkedin.com/in/kauan-costa](https://www.linkedin.com/in/kauan-costa-105b12345/
 
 MIT License © Kauan Costa
 
