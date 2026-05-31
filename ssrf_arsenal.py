@@ -89,6 +89,7 @@ def setup_argparse():
     export_group.add_argument("--export-siem", action="store_true", help="Export CEF for SIEM")
     export_group.add_argument("--export-json-api", action="store_true", help="Export JSON API report")
     export_group.add_argument("--attack-map", action="store_true", help="Generate attack path graph (requires networkx)")
+    export_group.add_argument("--output", "-o", default=".", help="Output directory")
     return parser
 
 class TargetManager:
@@ -342,6 +343,8 @@ class UltimateSSRFFramework:
         self.do_export_siem = args.export_siem
         self.do_export_json_api = args.export_json_api
         self.do_attack_map = args.attack_map
+        self.output_dir = Path(args.output)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.llm = None; self.ai = None
         if args.ai_provider and args.ai_provider != "none" and not self.no_ai:
@@ -368,8 +371,8 @@ class UltimateSSRFFramework:
 
         safe = re.sub(r'[^a-zA-Z0-9.-]', '_', target)
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.json_file = f"ssrf_{safe}_{ts}.json"
-        self.html_file = f"ssrf_report_{safe}_{ts}.html"
+        self.json_file = self.output_dir / f"ssrf_{safe}_{ts}.json"
+        self.html_file = self.output_dir / f"ssrf_report_{safe}_{ts}.html"
 
     async def start(self):
         self.playwright = await async_playwright().start()
@@ -661,11 +664,11 @@ class UltimateSSRFFramework:
                 })
         if templates:
             if YAML_AVAILABLE:
-                with open(f"nuclei_{self.target}.yaml","w") as f:
+                with open(self.output_dir / f"nuclei_{self.target}.yaml", "w") as f:
                     yaml.dump(templates, f, allow_unicode=True)
                 print(f"  {OK} Nuclei YAML exported")
             else:
-                with open(f"nuclei_{self.target}.json","w") as f:
+                with open(self.output_dir / f"nuclei_{self.target}.json", "w") as f:
                     json.dump(templates, f, indent=2)
                 print(f"  {WARN} PyYAML missing, exported JSON")
 
@@ -677,7 +680,7 @@ class UltimateSSRFFramework:
             cef += f"endpoint={ev.endpoint} param={ev.param} outOfBand={ev.out_of_band_hit} score={ev.impact_score}"
             entries.append(cef)
         if entries:
-            with open(f"siem_{self.target}.cef","w") as f:
+            with open(self.output_dir / f"siem_{self.target}.cef", "w") as f:
                 f.write("\n".join(entries))
             if self.verbose: print(f"  {OK} CEF exported")
 
@@ -691,7 +694,7 @@ class UltimateSSRFFramework:
             "unique_findings": len(self._dedup()),
             "callbacks": len(self.callbacks)
         }
-        with open(f"api_report_{self.target}.json","w") as f:
+        with open(self.output_dir / f"api_report_{self.target}.json", "w") as f:
             json.dump(data, f, indent=2, default=str)
         if self.verbose: print(f"  {OK} JSON API exported")
 
@@ -705,7 +708,7 @@ class UltimateSSRFFramework:
         for ip in self.internal_ips:
             G.add_node(ip, type="internal")
             G.add_edge(self.target, ip)
-        nx.write_gexf(G, f"attack_map_{self.target}.gexf")
+        nx.write_gexf(G, self.output_dir / f"attack_map_{self.target}.gexf")
         if self.verbose: print(f"  {OK} Attack map exported")
 
     async def generate_html(self):
