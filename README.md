@@ -2,8 +2,6 @@
 
 <div align="center">
 
-# Ultimate SSRF Arsenal
-
 ### Advanced SSRF Discovery, Testing & Validation Framework
 
 Automated Server-Side Request Forgery testing framework built for Bug Bounty Hunters, Penetration Testers, Red Team Operators and Security Researchers.
@@ -19,9 +17,27 @@ Automated Server-Side Request Forgery testing framework built for Bug Bounty Hun
 
 ---
 
-## Overview
+## Project Status
+
+✅ Active Development
+
+Current Version: v4.0
+
+Implemented Features:
+
+- Multi-target scanning
+- Blind SSRF detection
+- WAF fingerprinting
+- Multi-cloud metadata testing
+- HTML reporting
+- Multi-LLM integration
+- AI payload generation
+- AI triage
+- Exploit chain suggestions
 
 Ultimate SSRF Arsenal is a fully automated SSRF testing framework designed to discover, validate and analyze Server-Side Request Forgery vulnerabilities across modern web applications.
+
+## Overview
 
 The framework combines:
 
@@ -157,37 +173,42 @@ Result Processing
 
 ### Requirements
 
-* Python 3.8+
-* Playwright
+- Python 3.8+
+- pip
 
-### Basic Installation
+### requirements.txt
+
+```txt
+playwright>=1.40.0
+aiohttp>=3.9.0
+jinja2>=3.1.0
+httpx>=0.27.0
+```
+
+### Clone Repository
 
 ```bash
 git clone https://github.com/KauanCosta2000/ultimate-ssrf-arsenal.git
 
 cd ultimate-ssrf-arsenal
-
-pip install playwright
-
-playwright install chromium
 ```
 
-### Full Installation
+### Install Dependencies
 
 ```bash
-pip install playwright aiohttp jinja2 httpx
+pip install -r requirements.txt
 
 playwright install chromium
 ```
 
 ### Dependencies
 
-| Dependency | Required | Purpose                     |
-| ---------- | -------- | --------------------------- |
-| playwright | Yes      | Browser automation          |
-| aiohttp    | Optional | AI integrations             |
-| jinja2     | Optional | HTML reports                |
-| httpx      | Optional | Extended HTTP functionality |
+| Dependency | Required | Purpose |
+|------------|-----------|----------|
+| playwright | Yes | Browser automation |
+| aiohttp | Optional | AI integrations |
+| jinja2 | Optional | HTML reports |
+| httpx | Optional | Extended HTTP functionality |
 
 ---
 
