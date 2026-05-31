@@ -1,4 +1,4 @@
-from ssrf_arsenal import WAFFingerprinter
+from ultimate_ssrf.waf import WAFFingerprinter
 
 
 def test_cloudflare_detection():

@@ -1,4 +1,4 @@
-from ssrf_arsenal import TargetManager
+from ultimate_ssrf.targets import TargetManager
 
 
 def test_clean_domain_with_https():
