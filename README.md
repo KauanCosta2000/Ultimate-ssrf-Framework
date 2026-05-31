@@ -293,39 +293,86 @@ jobs:
 ## Completed
 
 * Async scanning engine
-* Multi-cloud testing
 * Blind SSRF detection
-* AI integration
+* Multi-cloud metadata testing
+* WAF fingerprinting
 * Proxy rotation
 * Docker support
-* CI/CD support
+* CI/CD integration
+* AI-assisted payload generation
+* HTML reporting
 
-## Upcoming
+---
 
-* WebSocket SSRF testing
-* gRPC SSRF testing
+## In Progress
+
 * Interactive Dashboard
-* Burp Suite Extension
-* OWASP ZAP Plugin
-* Kubernetes SSRF Module
-* Serverless SSRF Testing
 * Nuclei Template Export
 * Slack Notifications
 * Discord Notifications
 
 ---
 
-# 🤝 Contributing
+## Planned
 
-Contributions are welcome.
+### Advanced SSRF Research
 
-Please read:
+* WebSocket SSRF testing
+* gRPC SSRF testing
+* HTTP/2 request smuggling module
+* GraphQL SSRF testing
+* Cloud service discovery automation
+* Advanced DNS rebinding techniques
 
-* CONTRIBUTING.md
-* SECURITY.md
+### Cloud & Infrastructure
 
-before submitting pull requests.
+* Kubernetes SSRF module
+* Serverless SSRF testing
+* Docker API exploitation module
+* Internal service fingerprinting
+* Automatic cloud environment identification
 
+### Automation & Integrations
+
+* Burp Suite Extension
+* OWASP ZAP Plugin
+* Nuclei integration
+* JSON API export
+* SIEM integration support
+
+### AI & Analysis
+
+* AI-assisted exploit chain generation
+* Automatic attack path mapping
+* SSRF impact scoring
+* LLM-powered payload mutation
+* Automated finding prioritization
+
+### Reporting
+
+* Interactive HTML dashboard
+* Executive reports
+* PDF report export
+* Historical scan comparison
+* Asset tracking
+
+
+---
+
+## 🤝 Community
+
+Contributions, research ideas and SSRF bypass techniques are welcome.
+
+Useful areas for contribution:
+
+- Cloud metadata research
+- WebSocket SSRF
+- gRPC SSRF
+- WAF bypasses
+- Burp integrations
+- Nuclei templates
+
+See CONTRIBUTING.md for details.
 ---
 
 # ⚠️ Disclaimer
