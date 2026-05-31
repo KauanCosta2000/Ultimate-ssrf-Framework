@@ -18,23 +18,19 @@ A research-focused SSRF testing framework built for bug bounty hunting, penetrat
 
 ---
 
-## Why?
+## About
 
-This project started as a collection of SSRF testing scripts I used during bug bounty hunting.
+Ultimate SSRF Framework started as a collection of SSRF testing scripts I used during bug bounty hunting.
 
-Over time those scripts evolved into a larger framework capable of discovering endpoints, validating SSRF findings, testing cloud metadata services and generating reports from a single workflow.
+As the project grew, I kept adding the things I found myself doing repeatedly: endpoint discovery, blind SSRF validation, cloud metadata testing, reporting and infrastructure fingerprinting.
 
-The goal is simple:
+The result is a framework that can handle most of the SSRF workflow from a single command line interface.
 
-* Discover SSRF attack surfaces faster
-* Scan single targets, multiple targets or target lists
-* Validate findings with less manual work
-* Automate common cloud and infrastructure checks
-* Generate useful reports and exports
+The main goal is to reduce repetitive work and make it easier to discover, validate and document SSRF findings.
 
 ---
 
-## Features
+## What it can do
 
 Current capabilities include:
 
@@ -50,10 +46,10 @@ Current capabilities include:
 * Serverless SSRF testing
 * AI-assisted payload generation
 * AI-assisted finding triage
-* Nuclei export
-* SIEM (CEF) export
 * HTML reporting
 * JSON reporting
+* Nuclei export
+* SIEM (CEF) export
 * Attack map generation
 
 Cloud testing currently supports:
@@ -81,7 +77,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Install Playwright browser:
+Install Playwright:
 
 ```bash
 playwright install chromium
@@ -97,25 +93,25 @@ python ssrf_arsenal.py --help
 
 ## Quick Start
 
-Scan a single target:
+Single target:
 
 ```bash
 python ssrf_arsenal.py --target example.com
 ```
 
-Scan multiple targets:
+Multiple targets:
 
 ```bash
-python ssrf_arsenal.py --targets example.com,test.com
+python ssrf_arsenal.py --targets api.example.com,test.example.com
 ```
 
-Scan targets from a file:
+Target file:
 
 ```bash
 python ssrf_arsenal.py --target-file targets.txt
 ```
 
-Use a custom callback server:
+Blind SSRF callback:
 
 ```bash
 python ssrf_arsenal.py \
@@ -125,9 +121,46 @@ python ssrf_arsenal.py \
 
 ---
 
-## Proxy Support
+## CLI Reference
 
-HTTP proxy:
+Display all available options:
+
+```bash
+python ssrf_arsenal.py --help
+```
+
+### Target Selection
+
+```text
+--target, -t           Single target domain
+
+--targets              Comma-separated targets
+
+--target-file, -f      File containing targets
+                       (one target per line)
+```
+
+### Callback Server
+
+```text
+--callback, -c
+```
+
+Used for blind SSRF validation.
+
+---
+
+### Proxy Support
+
+```text
+--proxy, -p
+
+--proxy-file
+
+--proxy-type
+```
+
+Examples:
 
 ```bash
 python ssrf_arsenal.py \
@@ -135,36 +168,27 @@ python ssrf_arsenal.py \
 --proxy http://127.0.0.1:8080
 ```
 
-SOCKS5 proxy:
-
 ```bash
 python ssrf_arsenal.py \
 --target example.com \
 --proxy socks5://127.0.0.1:9050
 ```
 
-Proxy file:
-
-```bash
-python ssrf_arsenal.py \
---target example.com \
---proxy-file proxies.txt
-```
-
 ---
 
-## AI-assisted Workflows
-
-The framework can optionally use LLMs to assist with payload generation and finding analysis.
+### AI Integration
 
 Supported providers:
 
-* OpenAI
-* Claude
-* Gemini
-* Ollama
-* Mistral
-* DeepSeek
+```text
+claude
+openai
+ollama
+gemini
+mistral
+deepseek
+none
+```
 
 Example:
 
@@ -174,71 +198,63 @@ python ssrf_arsenal.py \
 --ai-provider ollama
 ```
 
-OpenAI example:
+---
+
+### Feature Control
+
+Disable specific modules:
+
+```text
+--no-waf
+--no-websocket
+--no-grpc
+--no-k8s
+--no-serverless
+--no-ai
+```
+
+Example:
 
 ```bash
 python ssrf_arsenal.py \
 --target example.com \
---ai-provider openai \
---ai-key YOUR_API_KEY
+--no-ai \
+--no-websocket
 ```
 
 ---
 
-## Advanced Modules
+### Output Control
 
-### WebSocket SSRF
+```text
+--quiet
+--visible
+--delay
+```
 
-* WebSocket endpoint discovery
-* URL injection testing
-* Callback validation
+Example:
 
-### gRPC SSRF
-
-* Reflection endpoint testing
-* Metadata leakage detection
-* Callback validation
-
-### Kubernetes SSRF
-
-* Kubernetes API discovery
-* Internal service enumeration
-* Namespace probing
-
-### Serverless SSRF
-
-* AWS Lambda testing
-* Azure Functions testing
-* Google Cloud Functions testing
-
-### WAF Fingerprinting
-
-Current fingerprints include:
-
-* Cloudflare
-* AWS WAF
-* Akamai
-* Imperva
-* F5 BIG-IP
-* Sucuri
-* Fastly
-* Azure Front Door
-* Google Cloud Armor
-* FortiWeb
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--quiet
+```
 
 ---
 
-## Reporting
+### Export Options
 
-Available output formats:
+```text
+--export-nuclei
 
-* JSON
-* HTML
-* Nuclei Templates
-* SIEM (CEF)
-* Attack Maps
+--export-siem
 
-Generate exports:
+--export-json-api
+
+--attack-map
+```
+
+Example:
 
 ```bash
 python ssrf_arsenal.py \
@@ -248,34 +264,47 @@ python ssrf_arsenal.py \
 --attack-map
 ```
 
-Generated files may include:
+---
 
-```text
-report.json
-report.html
-nuclei_target.yaml
-siem_target.cef
-attack_map_target.gexf
+## Reporting
+
+The framework can generate:
+
+* HTML reports
+* JSON reports
+* Nuclei templates
+* SIEM (CEF) exports
+* Attack maps
+
+Example:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--export-nuclei \
+--export-siem \
+--export-json-api \
+--attack-map
 ```
 
 ---
 
 ## Docker
 
-Build image:
+Build:
 
 ```bash
 docker build -t ultimate-ssrf-framework .
 ```
 
-Run scan:
+Run:
 
 ```bash
 docker run --rm ultimate-ssrf-framework \
 --target example.com
 ```
 
-Target file example:
+Target file:
 
 ```bash
 docker run --rm ultimate-ssrf-framework \
@@ -284,19 +313,11 @@ docker run --rm ultimate-ssrf-framework \
 
 ---
 
-## CI/CD
-
-The project includes GitHub Actions workflows for:
-
-* Syntax validation
-* Dependency installation checks
-* Automated Docker-based scanning workflows
-
----
-
 ## Development Status
 
-Version 4.2 introduces several research-oriented modules including:
+This project is actively maintained and new modules are added whenever I find interesting SSRF research areas worth exploring.
+
+Current research-focused modules include:
 
 * WebSocket SSRF
 * gRPC SSRF
@@ -304,7 +325,7 @@ Version 4.2 introduces several research-oriented modules including:
 * Serverless SSRF
 * AI-assisted workflows
 
-These modules are functional and will continue to evolve as new SSRF techniques and testing methodologies are added.
+Some of these features are still evolving and will continue to improve over future releases.
 
 ---
 
@@ -314,8 +335,8 @@ Planned work includes:
 
 * GraphQL SSRF discovery
 * HTTP/2 request smuggling research
-* Internal service fingerprinting
 * DNS rebinding improvements
+* Internal service fingerprinting
 * Burp Suite extension
 * OWASP ZAP integration
 * Slack notifications
@@ -323,36 +344,16 @@ Planned work includes:
 
 ---
 
-## Community
-
-Contributions, bug reports and research ideas are welcome.
-
-Useful areas for contribution:
-
-* Cloud metadata research
-* WebSocket SSRF
-* gRPC SSRF
-* WAF bypass techniques
-* Burp integrations
-* Nuclei templates
-* Internal service fingerprinting
-
-Join the discussion through:
-
-* GitHub Discussions
-* Issues
-* Pull Requests
-
----
-
 ## Contributing
+
+Bug reports, pull requests and research ideas are always welcome.
 
 Please review:
 
 * CONTRIBUTING.md
 * SECURITY.md
 
-before opening pull requests.
+before opening a pull request.
 
 ---
 
@@ -360,8 +361,11 @@ before opening pull requests.
 
 Developed by Belladonnask
 
-* GitHub: https://github.com/KauanCosta2000
-* LinkedIn: https://linkedin.com/in/kauan-costa](https://www.linkedin.com/in/kauan-costa-105b12345/
+GitHub:
+https://github.com/KauanCosta2000
+
+LinkedIn:
+https://linkedin.com/in/kauan-costa
 
 MIT License © Kauan Costa
 
@@ -369,6 +373,6 @@ MIT License © Kauan Costa
 
 ## Disclaimer
 
-This project is intended exclusively for authorized security testing, research and educational purposes.
+This project is intended for authorized security testing, research and educational purposes only.
 
-The author assumes no responsibility for misuse or unauthorized activities performed using this software.
+Use responsibly.
