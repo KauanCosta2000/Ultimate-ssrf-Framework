@@ -188,9 +188,8 @@ httpx>=0.27.0
 ### Clone Repository
 
 ```bash
-git clone https://github.com/KauanCosta2000/ultimate-ssrf-arsenal.git
-
-cd ultimate-ssrf-arsenal
+git clone https://github.com/KauanCosta2000/Ultimate-SSRF-Arsenal-Multi-Target-Automated-SSRF-Exploitation-Framework.git
+cd Ultimate-SSRF-Arsenal-Multi-Target-Automated-SSRF-Exploitation-Framework
 ```
 
 ### Install Dependencies
