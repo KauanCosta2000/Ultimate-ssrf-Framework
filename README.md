@@ -133,6 +133,70 @@ python ssrf_arsenal.py --help
 
 ```text
 --target, -t           Single target domain
+--targets              Comma-separated targets
+--target-file, -f      File containing targets (one target per line)
+```
+
+### Callback Server
+
+```text
+--callback, -c         Out-of-band callback host
+```
+
+### Proxy Support
+
+```text
+--proxy, -p            Single proxy URL
+--proxy-file           File containing proxy list
+--proxy-type           http | socks5
+```
+
+### AI Integration
+
+```text
+--ai-provider          claude | openai | ollama | gemini | mistral | deepseek | none
+--ai-key               API key for cloud AI providers
+--ai-model             Specific model name
+```
+
+### Feature Control
+
+```text
+--no-waf               Disable WAF detection
+--no-websocket         Disable WebSocket SSRF tests
+--no-grpc              Disable gRPC SSRF tests
+--no-k8s               Disable Kubernetes SSRF tests
+--no-serverless        Disable Serverless SSRF tests
+--no-ai                Disable AI features
+```
+
+### Export Options
+
+```text
+--export-nuclei        Export Nuclei templates
+--export-siem          Export SIEM CEF report
+--export-json-api      Export JSON API report
+--attack-map           Generate attack path graph
+--output, -o           Output directory
+```
+
+### Example
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--callback your-callback.oastify.com \
+--output reports \
+--export-nuclei \
+--export-siem \
+--export-json-api \
+--attack-map
+```
+
+### Target Selection
+
+```text
+--target, -t           Single target domain
 
 --targets              Comma-separated targets
 
@@ -270,11 +334,35 @@ python ssrf_arsenal.py \
 
 The framework can generate:
 
-* HTML reports
-* JSON reports
-* Nuclei templates
-* SIEM (CEF) exports
-* Attack maps
+- HTML Reports
+- JSON Reports
+- Nuclei Templates
+- SIEM CEF Exports
+- Attack Maps
+
+Use `--output` to specify where generated files should be saved:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--output reports \
+--export-nuclei \
+--export-siem \
+--export-json-api \
+--attack-map
+```
+
+Generated files may include:
+
+```text
+reports/
+- ssrf_example.com_YYYYMMDD_HHMMSS.json
+- ssrf_report_example.com_YYYYMMDD_HHMMSS.html
+- nuclei_example.com.yaml
+- siem_example.com.cef
+- api_report_example.com.json
+- attack_map_example.com.gexf
+```
 
 Example:
 
