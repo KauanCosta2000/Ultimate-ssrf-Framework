@@ -1,6 +1,5 @@
 from ultimate_ssrf.waf import WAFFingerprinter
 
-
 def test_cloudflare_detection():
     waf = WAFFingerprinter()
 
@@ -12,7 +11,6 @@ def test_cloudflare_detection():
 
     assert result["detected"] is True
     assert result["primary"] == "Cloudflare"
-
 
 def test_no_waf_detection():
     waf = WAFFingerprinter()
