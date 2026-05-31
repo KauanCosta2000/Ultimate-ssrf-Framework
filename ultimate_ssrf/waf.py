@@ -1,4 +1,4 @@
-class WAFFingerprinter:
+﻿class WAFFingerprinter:
     SIGNATURES = {
         "Cloudflare": {
             "headers": ["cf-ray", "__cfduid"],
@@ -62,7 +62,7 @@ class WAFFingerprinter:
     def fingerprint(self, headers, body, cookies=None):
         cookies = cookies or {}
 
-        headers_lower = {key.lower(): message(value).lower() for key, value in headers.items()}
+        headers_lower = {key.lower(): str(value).lower() for key, value in headers.items()}
         body_lower = body.lower()[:10000]
         cookie_keys = [key.lower() for key in cookies]
 
