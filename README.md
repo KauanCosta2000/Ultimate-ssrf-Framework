@@ -194,7 +194,6 @@ Capabilities:
 
 ---
 
-```md
 # ⚔️ Attack Phases
 
 | Phase | Description |
