@@ -1,0 +1,49 @@
+name: Periodic SSRF Scan
+
+on:
+  schedule:
+    # Runs every day at 3:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:      # Allow manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - 'targets.txt'     # Re-run when target list changes
+
+jobs:
+  ssrf-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create output directory
+        run: mkdir -p output
+
+      - name: Pull Docker image
+        run: docker pull ghcr.io/kauancosta2000/ultimate-ssrf-arsenal:latest
+
+      - name: Run SSRF scan
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/output:/app/output \
+            -v ${{ github.workspace }}/targets.txt:/app/targets.txt:ro \
+            ghcr.io/kauancosta2000/ultimate-ssrf-arsenal:latest \
+            --target-file /app/targets.txt \
+            --quiet \
+            --delay 1 \
+            -o /app/output
+
+      - name: Upload reports as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssrf-reports
+          path: output/
+          retention-days: 7
+
+      - name: Summary
+        run: |
+          echo "## SSRF Scan Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Reports available as artifacts." >> $GITHUB_STEP_SUMMARY
