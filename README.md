@@ -61,11 +61,7 @@ Ultimate SSRF Framework is designed to discover, validate and analyze Server-Sid
 
 # 📸 Demo
 
-> Add screenshots or GIF demonstrations inside the `/docs` folder.
-
-```markdown
 ![Demo](docs/demo.png)
-```
 
 ---
 
@@ -196,27 +192,25 @@ Capabilities:
 
 # ⚔️ Attack Phases
 
-| Phase | Description |
-|-------|-------------|
-| WAF Detection | WAF and CDN fingerprinting |
-| Discovery | Endpoint and parameter discovery |
-| Validation | SSRF confirmation and verification |
-| Parameter Fuzzing | Parameter mutation and testing |
-| Localhost Bypass | Internal network access techniques |
-| Metadata Testing | Cloud metadata endpoint testing |
+| Phase             | Description                                               |
+| ----------------- | --------------------------------------------------------- |
+| WAF Detection     | WAF and CDN fingerprinting                                |
+| Discovery         | Endpoint and parameter discovery                          |
+| Validation        | SSRF confirmation and verification                        |
+| Parameter Fuzzing | Parameter mutation and testing                            |
+| Localhost Bypass  | Internal network access techniques                        |
+| Metadata Testing  | Cloud metadata endpoint testing                           |
 | Internal Services | Redis, Docker, Vault, Kubelet and other internal services |
-| Protocol Attacks | file://, gopher://, ftp://, ldap://, dict:// and tftp:// |
-| Redirect Bypass | URL parser confusion and redirect abuse |
-| DNS Rebinding | Internal network targeting through DNS rebinding |
-| XXE → SSRF | XML-based SSRF testing |
-| Encoding Bypass | URL, Unicode and double encoding techniques |
-| CRLF Injection | Header manipulation and request smuggling vectors |
-| Fragment Bypass | URL fragment confusion techniques |
-| Exotic Protocols | Advanced protocol abuse scenarios |
-| AI Payloads | AI-assisted payload generation (optional) |
-| AI Triage | AI-assisted finding analysis (optional) |
-```
-
+| Protocol Attacks  | file://, gopher://, ftp://, ldap://, dict:// and tftp://  |
+| Redirect Bypass   | URL parser confusion and redirect abuse                   |
+| DNS Rebinding     | Internal network targeting through DNS rebinding          |
+| XXE → SSRF        | XML-based SSRF testing                                    |
+| Encoding Bypass   | URL, Unicode and double encoding techniques               |
+| CRLF Injection    | Header manipulation and request smuggling vectors         |
+| Fragment Bypass   | URL fragment confusion techniques                         |
+| Exotic Protocols  | Advanced protocol abuse scenarios                         |
+| AI Payloads       | AI-assisted payload generation (optional)                 |
+| AI Triage         | AI-assisted finding analysis (optional)                   |
 
 ---
 
@@ -232,17 +226,19 @@ Supported outputs:
 
 # 🐳 Docker
 
-Build:
+Build image:
 
 ```bash
 docker build -t ultimate-ssrf-framework .
 ```
 
-Run:
+Run scan:
 
 ```bash
 docker run --rm ultimate-ssrf-framework --target example.com
 ```
+
+See `Dockerfile` for the complete container configuration.
 
 ---
 
