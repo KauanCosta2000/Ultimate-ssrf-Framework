@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.env
+reports/
+*.json
+*.html
+playwright-report/
+.vscode/
+.idea/
