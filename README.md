@@ -1,505 +1,352 @@
-# Ultimate SSRF Arsenal v4.0
+# Ultimate SSRF Framework v4.1
 
 <div align="center">
 
-### Advanced SSRF Discovery, Testing & Validation Framework
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![Playwright](https://img.shields.io/badge/Playwright-1.40+-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Version](https://img.shields.io/badge/Version-4.1-red.svg)
+![Status](https://img.shields.io/badge/Status-Active-success.svg)
+![AI](https://img.shields.io/badge/AI-Optional-purple.svg)
+
+### Advanced SSRF Discovery, Validation & Exploitation Framework
 
 Automated Server-Side Request Forgery testing framework built for Bug Bounty Hunters, Penetration Testers, Red Team Operators and Security Researchers.
-
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
-![Playwright](https://img.shields.io/badge/Playwright-Chromium-green)
-![Version](https://img.shields.io/badge/Version-4.0-red)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Status](https://img.shields.io/badge/Status-Active-success)
-![AI](https://img.shields.io/badge/AI-Optional-purple)
 
 </div>
 
 ---
 
-## Project Status
+# 🚀 Highlights
+
+* 50+ SSRF Discovery Paths
+* 15 Attack Phases
+* Blind SSRF Detection
+* Multi-Cloud Metadata Testing
+* WAF Fingerprinting
+* Multi-LLM Support
+* Proxy Rotation
+* HTML Reporting
+* Async Scanning Engine
+* Bug Bounty Focused
+
+---
+
+# 📊 Project Status
 
 ✅ Active Development
 
-Current Version: v4.0
+**Current Version:** v4.1
 
-Implemented Features:
+### Implemented Features
 
-- Multi-target scanning
-- Blind SSRF detection
-- WAF fingerprinting
-- Multi-cloud metadata testing
-- HTML reporting
-- Multi-LLM integration
-- AI payload generation
-- AI triage
-- Exploit chain suggestions
-
-Ultimate SSRF Arsenal is a fully automated SSRF testing framework designed to discover, validate and analyze Server-Side Request Forgery vulnerabilities across modern web applications.
-
-## Overview
-
-## Demo
-![Demo](docs/demo.gif)
-
-The framework combines:
-
-* Dynamic endpoint discovery
+* Multi-target scanning
 * Blind SSRF detection
-* Multi-cloud metadata testing
-* Protocol smuggling
 * WAF fingerprinting
-* Smart finding deduplication
-* Multi-target scanning
-* JSON & HTML reporting
-* Optional AI-assisted analysis
-
-Unlike traditional scanners that rely solely on predefined payloads, Ultimate SSRF Arsenal combines discovery, validation, exploitation and reporting in a single workflow.
-
----
-
-## Features
-
-### Core Features
-
-* Dynamic endpoint discovery
-* Automatic parameter extraction
-* Multi-target scanning
-* Blind SSRF detection
-* Smart finding deduplication
-* Severity classification
-* JSON reporting
+* Multi-cloud metadata testing
 * HTML reporting
-
-### SSRF Testing
-
-* Localhost bypasses
-* DNS rebinding
-* Protocol smuggling
-* Redirect bypasses
-* Encoding bypasses
-* XXE → SSRF testing
-* CRLF injection testing
-* Internal service discovery
-* Multi-cloud metadata extraction
-
-### Supported Cloud Providers
-
-* AWS
-* Azure
-* Google Cloud Platform
-* Oracle Cloud
-* Alibaba Cloud
-* Tencent Cloud
-* Huawei Cloud
-* DigitalOcean
-
-### WAF Fingerprinting
-
-Supports 20+ WAF/CDN signatures including:
-
-* Cloudflare
-* AWS WAF
-* Akamai
-* Imperva
-* ModSecurity
-* F5 BIG-IP
-* Citrix NetScaler
-* Fortinet
-* Sucuri
-* Fastly
-* Azure WAF
-* Google Cloud Armor
-* Alibaba Cloud WAF
-
-Automatic bypass recommendations are provided when available.
-
----
-
-## AI Integration (Optional)
-
-AI features are completely optional.
-
-The framework works normally even when no AI provider is configured.
-
-### Supported Providers
-
-* Ollama (Local)
-* OpenAI
-* Claude
-* Gemini
-* DeepSeek
-* Mistral
-
-### AI Capabilities
-
-* Context-aware payload generation
-* Automated finding triage
+* Multi-LLM integration
+* AI payload generation
+* AI triage
 * Exploit chain suggestions
-* Attack planning
-* False-positive analysis
-* Risk assessment
+* Proxy support
+* Proxy rotation
+* Async scanning engine
+* Docker support
+* CI/CD integration
 
-Graceful degradation ensures all core SSRF functionality remains available without AI.
+Ultimate SSRF Framework is designed to discover, validate and analyze Server-Side Request Forgery vulnerabilities across modern web applications and cloud environments.
 
 ---
 
-## Architecture
+# 📸 Demo
 
-```text
-Target(s)
-    │
-    ▼
-Discovery Engine
-    │
-    ▼
-SSRF Testing Engine
-    │
-    ├── Blind SSRF
-    ├── Metadata Testing
-    ├── Protocol Attacks
-    ├── DNS Rebinding
-    ├── WAF Detection
-    └── AI Assistance
-    │
-    ▼
-Result Processing
-    │
-    ├── Deduplication
-    ├── Severity Analysis
-    └── Report Generation
+> Add screenshots or GIF demonstrations inside the `/docs` folder.
+
+```markdown
+![Demo](docs/demo.png)
 ```
 
 ---
 
-## Installation
-
-### Requirements
-
-- Python 3.8+
-- pip
-
-### requirements.txt
-
-```txt
-playwright>=1.40.0
-aiohttp>=3.9.0
-jinja2>=3.1.0
-httpx>=0.27.0
-```
-
-### Clone Repository
+# ⚡ Quick Start
 
 ```bash
-git clone https://github.com/KauanCosta2000/Ultimate-ssrf-Framework
+git clone https://github.com/KauanCosta2000/Ultimate-ssrf-Framework.git
+
 cd Ultimate-ssrf-Framework
-```
 
-### Install Dependencies
-
-```bash
 pip install -r requirements.txt
 
 playwright install chromium
-```
 
-### Dependencies
-
-| Dependency | Required | Purpose |
-|------------|-----------|----------|
-| playwright | Yes | Browser automation |
-| aiohttp | Optional | AI integrations |
-| jinja2 | Optional | HTML reports |
-| httpx | Optional | Extended HTTP functionality |
-
----
-
-## Quick Start
-
-### Single Target
-
-```bash
 python ssrf_arsenal.py --target example.com
 ```
 
-### Multiple Targets
+---
 
-```bash
-python ssrf_arsenal.py --targets "example.com,test.com,api.org"
-```
+# 📖 Overview
 
-### Target File
+Ultimate SSRF Framework provides automated discovery and validation capabilities for SSRF vulnerabilities while maintaining support for advanced bypass techniques, cloud metadata testing and out-of-band verification.
 
-```bash
-python ssrf_arsenal.py --target-file targets.txt
-```
+The framework combines traditional SSRF testing methodologies with modern automation and optional AI-assisted analysis.
 
-### Blind SSRF Testing
+---
+
+# ✨ Core Features
+
+## Discovery
+
+* Dynamic endpoint discovery
+* Parameter extraction
+* Candidate identification
+* Automatic crawling
+
+## Validation
+
+* Blind SSRF verification
+* OAST callback support
+* Response analysis
+* Automatic confirmation
+
+## Multi-Cloud Metadata Testing
+
+Supported providers:
+
+* AWS
+* Azure
+* Google Cloud
+* Oracle Cloud
+* DigitalOcean
+* Alibaba Cloud
+* Huawei Cloud
+* Tencent Cloud
+
+## Protocol Testing
+
+Supported protocols:
+
+* file://
+* gopher://
+* ftp://
+* ldap://
+* dict://
+* tftp://
+
+## Advanced Techniques
+
+* DNS Rebinding
+* Localhost bypasses
+* CRLF injection
+* XXE → SSRF
+* URL parser confusion
+* Redirect bypasses
+* Encoding bypasses
+
+---
+
+# 🌐 Proxy Support
+
+### HTTP Proxy
 
 ```bash
 python ssrf_arsenal.py \
-  --target example.com \
-  --callback your.oastify.com
+--target example.com \
+--proxy http://127.0.0.1:8080
 ```
 
-### AI Enabled
+### SOCKS5 Proxy
 
 ```bash
 python ssrf_arsenal.py \
-  --target example.com \
-  --ai-provider ollama
+--target example.com \
+--proxy socks5://127.0.0.1:9050
+```
+
+### Proxy Rotation
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--proxy-file proxies.txt
 ```
 
 ---
 
-## Command Line Options
+# 🤖 AI Integration
 
-| Option        | Description             |
-| ------------- | ----------------------- |
-| --target      | Single target           |
-| --targets     | Multiple targets        |
-| --target-file | File containing targets |
-| --callback    | Callback server         |
-| --delay       | Request delay           |
-| --quiet       | Reduced output          |
-| --visible     | Browser visible         |
-| --ai-provider | AI provider             |
-| --ai-model    | AI model                |
-| --ai-key      | Provider API key        |
-| --help        | Help menu               |
+Optional support for:
 
----
+* GPT-4o
+* Claude
+* Gemini
+* Ollama
+* DeepSeek
+* Mistral
 
-## Attack Phases
+Capabilities:
 
-| Phase                | Description                      |
-| -------------------- | -------------------------------- |
-| WAF Detection        | WAF/CDN fingerprinting           |
-| Discovery            | Endpoint discovery               |
-| Validation           | SSRF validation                  |
-| Parameter Fuzzing    | Parameter testing                |
-| Localhost Bypass     | Alternate localhost formats      |
-| GCP Metadata         | GCP metadata extraction          |
-| Multi-Cloud Metadata | Cloud metadata testing           |
-| Internal Services    | Internal service discovery       |
-| Protocol Attacks     | file://, gopher://, ldap://      |
-| Redirect Bypass      | Redirect abuse                   |
-| DNS Rebinding        | DNS rebinding attacks            |
-| XXE → SSRF           | XML abuse                        |
-| Encoding Bypass      | Encoding tricks                  |
-| CRLF Injection       | Header injection                 |
-| Fragment Bypass      | URL confusion                    |
-| Exotic Protocols     | Advanced protocol abuse          |
-| AI Payloads          | Context-aware payload generation |
-| AI Triage            | Automated vulnerability analysis |
+* Payload generation
+* Finding triage
+* Attack planning
+* Exploit chain suggestions
+* Report assistance
 
 ---
 
-## Example Output
+# ⚔️ Attack Phases
 
-```text
-[WAF] Detected: Cloudflare (95%)
+| Phase             | Description                   |
+| ----------------- | ----------------------------- |
+| WAF Detection     | WAF and CDN fingerprinting    |
+| Discovery         | Endpoint discovery            |
+| Validation        | SSRF confirmation             |
+| Parameter Fuzzing | Parameter mutation            |
+| Localhost Bypass  | Internal network access       |
+| Metadata Testing  | Cloud metadata endpoints      |
+| Internal Services | Redis, Docker, Vault, Kubelet |
+| Protocol Attacks  | file, gopher, ftp, ldap       |
+| Redirect Bypass   | URL parser confusion          |
+| DNS Rebinding     | Internal targeting            |
+| XXE → SSRF        | XML based SSRF                |
+| Encoding Bypass   | Filter bypasses               |
+| CRLF Injection    | Header manipulation           |
+| Fragment Bypass   | URL fragment confusion        |
+| Exotic Protocols  | Advanced protocol abuse       |
 
-[DISCOVERY]
-Found 12 endpoints
+---
 
-[BASIC]
-[CRITICAL] /api/proxy → url
+# 📄 Reporting
 
-[AI]
-Generated 10 custom payloads
-Risk Assessment: CRITICAL
-Suggested exploit chains: 5
+Supported outputs:
 
-========================================
+* Console Output
+* JSON Reports
+* HTML Reports
 
-Target: example.com
+---
 
-Critical Findings: 1
-High Findings: 2
-Medium Findings: 4
+# 🐳 Docker
 
-========================================
+Build:
+
+```bash
+docker build -t ultimate-ssrf-framework .
+```
+
+Run:
+
+```bash
+docker run --rm ultimate-ssrf-framework --target example.com
 ```
 
 ---
 
-## Output Files
+# 🔄 CI/CD Integration
 
-Generated artifacts:
+Supported environments:
 
-```text
-reports/
+* GitHub Actions
+* GitLab CI
+* Jenkins
+* Custom Pipelines
 
-├── ssrf_results_example.json
-├── ssrf_report_example.html
+Example:
+
+```yaml
+name: SSRF Scan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run SSRF Framework
+        run: python ssrf_arsenal.py --target-file targets.txt
 ```
 
-Reports include:
+---
 
-* Vulnerabilities
-* Endpoints
-* Parameters
-* Callback correlation
-* WAF detection
-* Evidence
-* Severity classification
+# 🗺️ Roadmap
+
+## Completed
+
+* Async scanning engine
+* Multi-cloud testing
+* Blind SSRF detection
+* AI integration
+* Proxy rotation
+* Docker support
+* CI/CD support
+
+## Upcoming
+
+* WebSocket SSRF testing
+* gRPC SSRF testing
+* Interactive Dashboard
+* Burp Suite Extension
+* OWASP ZAP Plugin
+* Kubernetes SSRF Module
+* Serverless SSRF Testing
+* Nuclei Template Export
+* Slack Notifications
+* Discord Notifications
 
 ---
 
-## Use Cases
-
-### Bug Bounty
-
-Automated SSRF discovery across attack surfaces.
-
-### Penetration Testing
-
-Internal network mapping and SSRF validation.
-
-### Cloud Security
-
-Metadata exposure testing and IAM discovery.
-
-### Security Research
-
-Protocol abuse and filter bypass experimentation.
-
-### Red Team Operations
-
-Infrastructure enumeration and attack path analysis.
-
----
-
-## Roadmap
-
-### Performance
-
-* [ ] Async engine improvements
-* [ ] SOCKS5 proxy support
-* [ ] HTTP proxy rotation
-* [ ] Docker image release
-* [ ] CI/CD integration
-
-### New Attack Modules
-
-* [ ] WebSocket SSRF
-* [ ] gRPC SSRF
-* [ ] OAuth SSRF
-* [ ] SSO SSRF
-* [ ] PDF generation SSRF
-* [ ] Image processing SSRF
-* [ ] Deserialization → SSRF
-
-### Reporting
-
-* [ ] Interactive HTML dashboard
-* [ ] PDF reports
-* [ ] MITRE ATT&CK mapping
-* [ ] CVSS 4.0 scoring
-* [ ] Historical scan comparison
-
-### Integrations
-
-* [ ] Burp Suite extension
-* [ ] OWASP ZAP plugin
-* [ ] Nuclei template export
-* [ ] Slack notifications
-* [ ] Discord notifications
-* [ ] Jira integration
-* [ ] GitHub Issues integration
-* [ ] DefectDojo integration
-
-### AI Enhancements
-
-* [ ] Multi-agent analysis
-* [ ] Real-time AI guidance
-* [ ] Fine-tuned SSRF model
-* [ ] Autonomous payload mutation
-* [ ] Natural language reporting
-
-### Cloud & Containers
-
-* [ ] Kubernetes SSRF
-* [ ] Serverless SSRF
-* [ ] CDN-specific testing
-* [ ] API Gateway bypasses
-
-### Documentation
-
-* [ ] Video tutorials
-* [ ] Project wiki
-* [ ] Community payload repository
-* [ ] CTF practice labs
-
----
-
-## Contributing
+# 🤝 Contributing
 
 Contributions are welcome.
 
-```bash
-git checkout -b feature/my-feature
+Please read:
 
-git commit -m "Add new feature"
+* CONTRIBUTING.md
+* SECURITY.md
 
-git push origin feature/my-feature
-```
-
-Then open a Pull Request.
+before submitting pull requests.
 
 ---
 
-## Security
+# ⚠️ Disclaimer
 
-Please do not disclose vulnerabilities publicly.
+This project is intended exclusively for authorized security testing, research and educational purposes.
 
-Open a private issue or contact the maintainer directly with:
-
-* Description
-* Impact
-* Reproduction steps
-* Evidence
+The author assumes no responsibility for misuse or unauthorized activities performed using this software.
 
 ---
 
-## Disclaimer
-
-This project is intended exclusively for:
-
-* Authorized penetration testing
-* Bug bounty programs
-* Security research
-* Educational purposes
-
-Only test systems you own or have explicit permission to assess.
-
-The author assumes no responsibility for misuse.
-
----
-
-## License
+# 📜 License
 
 MIT License
 
-See LICENSE for details.
+Copyright (c) 2025 Kauan Costa
 
 ---
 
-## Author
+# 👤 Author
 
-**Kauan Costa**
+**Kauan Costa (@belladonnask)**
 
-GitHub: https://github.com/KauanCosta2000
+GitHub:
+https://github.com/KauanCosta2000
 
-Alias: belladonnask
+Repository:
+https://github.com/KauanCosta2000/Ultimate-ssrf-Framework
 
 ---
 
 <div align="center">
 
-⭐ Star this repository if you find it useful.
+⭐ Star the repository if you find it useful.
 
-Happy Hunting.
+Happy (authorized) hacking!
 
 </div>
