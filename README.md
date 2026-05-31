@@ -18,6 +18,12 @@ A research-focused SSRF testing framework built for bug bounty hunting, penetrat
 
 ---
 
+## Important read first!!!
+
+This tool does not automatically prove impact. Findings should be manually validated before being reported.
+Blind SSRF confirmation depends on external OAST/Collaborator logs.
+Some modules are experimental and may produce false positives.
+
 ## About
 
 Ultimate SSRF Framework started as a collection of SSRF testing scripts I used during bug bounty hunting.
