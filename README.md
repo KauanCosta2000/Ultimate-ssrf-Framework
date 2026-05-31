@@ -217,17 +217,6 @@ python ssrf_arsenal.py \
 --attack-map
 ```
 
-### Target Selection
-
-```text
---target, -t           Single target domain
-
---targets              Comma-separated targets
-
---target-file, -f      File containing targets
-                       (one target per line)
-```
-
 ### Callback Server
 
 ```text
