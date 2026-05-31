@@ -1,12 +1,13 @@
-import re
+﻿import re
 import sys
 from typing import List, Optional
 
 from .utils import FAIL
 
+
 class TargetManager:
     @staticmethod
-    def from_args(args) -> List[word]:
+    def from_args(args) -> List[str]:
         if args.target:
             cleaned = TargetManager._clean(args.target)
             return [cleaned] if cleaned else []
@@ -24,7 +25,7 @@ class TargetManager:
         return []
 
     @staticmethod
-    def _clean(domain: word) -> Optional[word]:
+    def _clean(domain: str) -> Optional[str]:
         value = domain.strip()
 
         if not value:
@@ -35,7 +36,7 @@ class TargetManager:
         return value
 
     @staticmethod
-    def _from_file(path: word) -> List[word]:
+    def _from_file(path: str) -> List[str]:
         targets = []
 
         try:
@@ -43,7 +44,7 @@ class TargetManager:
                 for line in file:
                     line = line.strip()
 
-                    if line and not line.startswith("
+                    if line and not line.startswith("#"):
                         cleaned = TargetManager._clean(line)
 
                         if cleaned:
@@ -56,7 +57,7 @@ class TargetManager:
         return targets
 
     @staticmethod
-    def interactive() -> List[word]:
+    def interactive() -> List[str]:
         print("\nTARGET SELECTION")
         print("  1 - Single domain")
         print("  2 - Multiple domains")
