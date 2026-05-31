@@ -2,9 +2,10 @@
 """
 Ultimate SSRF Arsenal v4.0 - AI-Powered Edition (Optional AI)
 Complete SSRF Testing Framework with Optional Multi-LLM Integration
-Supports: Claude, GPT-4, Codex, Ollama, Gemini, Mistral, DeepSeek
+Supports: Claude, GPT-4o, Ollama, Gemini, Mistral, DeepSeek
 
 AI features are completely optional - all core SSRF testing works without any LLM.
+Uses argparse for proper command-line argument parsing.
 """
 
 import asyncio
@@ -15,14 +16,13 @@ import urllib.parse
 import os
 import sys
 import socket
+import argparse
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional, Set, Any, Union
 from collections import defaultdict, Counter
 from pathlib import Path
 from enum import Enum
-import hashlib
-import base64
 
 # Core dependency
 from playwright.async_api import async_playwright, Response, Page
@@ -109,9 +109,137 @@ class DiscoveredEndpoint:
     content_type: str
 
 
+# ==================== ARGPARSE SETUP ====================
+def setup_argparse() -> argparse.ArgumentParser:
+    """Configure argument parser with all options"""
+    parser = argparse.ArgumentParser(
+        description="Ultimate SSRF Arsenal v4.0 - AI-Powered SSRF Testing Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Single target
+  python ssrf_arsenal.py --target example.com
+
+  # Multiple targets
+  python ssrf_arsenal.py --targets example.com,test.com,api.org
+
+  # From file
+  python ssrf_arsenal.py --target-file targets.txt
+
+  # With callback and AI
+  python ssrf_arsenal.py --target example.com --callback burp.oastify.com --ai-provider ollama
+
+  # With Claude AI
+  python ssrf_arsenal.py --target example.com --ai-provider claude --ai-key YOUR_KEY
+
+  # Quiet mode
+  python ssrf_arsenal.py --targets "example.com,test.com" --quiet
+        """
+    )
+    
+    # Target group (mutually exclusive)
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        "--target", "-t",
+        type=str,
+        help="Single target domain to scan"
+    )
+    target_group.add_argument(
+        "--targets",
+        type=str,
+        help="Multiple targets (comma-separated)"
+    )
+    target_group.add_argument(
+        "--target-file", "-f",
+        type=str,
+        help="File with targets (one per line, # for comments)"
+    )
+    
+    # Callback options
+    parser.add_argument(
+        "--callback", "-c",
+        type=str,
+        default=None,
+        help="Callback host for blind SSRF detection (e.g., burp.oastify.com)"
+    )
+    
+    # Rate limiting
+    parser.add_argument(
+        "--delay", "-d",
+        type=float,
+        default=0.5,
+        help="Delay between requests in seconds (default: 0.5)"
+    )
+    
+    # Display options
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        default=False,
+        help="Less verbose output"
+    )
+    parser.add_argument(
+        "--visible",
+        action="store_true",
+        default=False,
+        help="Show browser window (not headless)"
+    )
+    
+    # AI options
+    ai_group = parser.add_argument_group("AI Integration (Optional)")
+    ai_group.add_argument(
+        "--ai-provider",
+        type=str,
+        choices=["claude", "openai", "ollama", "gemini", "mistral", "deepseek", "none"],
+        default=None,
+        help="LLM provider for AI features"
+    )
+    ai_group.add_argument(
+        "--ai-key",
+        type=str,
+        default=None,
+        help="API key for cloud AI providers"
+    )
+    ai_group.add_argument(
+        "--ai-model",
+        type=str,
+        default=None,
+        help="Specific model name (uses default if not specified)"
+    )
+    
+    # Feature flags
+    feature_group = parser.add_argument_group("Feature Flags")
+    feature_group.add_argument(
+        "--no-graphql",
+        action="store_true",
+        default=False,
+        help="Disable GraphQL SSRF testing"
+    )
+    feature_group.add_argument(
+        "--no-smuggling",
+        action="store_true",
+        default=False,
+        help="Disable HTTP/2 smuggling tests"
+    )
+    feature_group.add_argument(
+        "--no-html",
+        action="store_true",
+        default=False,
+        help="Disable HTML report generation"
+    )
+    feature_group.add_argument(
+        "--no-waf",
+        action="store_true",
+        default=False,
+        help="Disable WAF detection"
+    )
+    
+    return parser
+
+
 # ==================== TARGET MANAGER ====================
 class TargetManager:
-    """Manage targets from multiple input sources"""
+    """Manage targets from multiple input sources using argparse results"""
     
     @staticmethod
     def from_single(domain: str) -> List[str]:
@@ -119,9 +247,7 @@ class TargetManager:
         domain = domain.strip()
         if not domain:
             return []
-        # Remove protocol if present
         domain = re.sub(r'^https?://', '', domain)
-        # Remove path
         domain = domain.split('/')[0]
         return [domain]
     
@@ -145,57 +271,30 @@ class TargetManager:
             with open(filepath, 'r') as f:
                 for line in f:
                     line = line.strip()
-                    # Skip empty lines and comments
                     if not line or line.startswith('#'):
                         continue
-                    # Clean domain
                     line = re.sub(r'^https?://', '', line)
                     line = line.split('/')[0]
                     targets.append(line)
         except FileNotFoundError:
             print(f"{FAIL} File not found: {filepath}")
+            sys.exit(1)
         except Exception as e:
             print(f"{FAIL} Error reading file: {e}")
+            sys.exit(1)
         return targets
     
     @staticmethod
-    def from_cli_args(args: List[str]) -> List[str]:
-        """Parse targets from CLI arguments"""
+    def from_args(args: argparse.Namespace) -> List[str]:
+        """Parse targets from argparse namespace"""
         targets = []
         
-        i = 0
-        while i < len(args):
-            arg = args[i]
-            
-            if arg == "--target" and i + 1 < len(args):
-                # Single target
-                targets.extend(TargetManager.from_single(args[i + 1]))
-                i += 2
-                
-            elif arg == "--targets" and i + 1 < len(args):
-                # Comma-separated list
-                targets.extend(TargetManager.from_comma_list(args[i + 1]))
-                i += 2
-                
-            elif arg == "--target-file" and i + 1 < len(args):
-                # File with targets
-                targets.extend(TargetManager.from_file(args[i + 1]))
-                i += 2
-                
-            elif arg == "--target" and i + 1 >= len(args):
-                print(f"{FAIL} --target requires a value")
-                i += 1
-                
-            elif arg == "--targets" and i + 1 >= len(args):
-                print(f"{FAIL} --targets requires a value")
-                i += 1
-                
-            elif arg == "--target-file" and i + 1 >= len(args):
-                print(f"{FAIL} --target-file requires a value")
-                i += 1
-                
-            else:
-                i += 1
+        if args.target:
+            targets = TargetManager.from_single(args.target)
+        elif args.targets:
+            targets = TargetManager.from_comma_list(args.targets)
+        elif args.target_file:
+            targets = TargetManager.from_file(args.target_file)
         
         # Remove duplicates while preserving order
         seen = set()
@@ -209,7 +308,7 @@ class TargetManager:
     
     @staticmethod
     def interactive_select() -> List[str]:
-        """Interactive target selection"""
+        """Interactive target selection (fallback when no CLI args)"""
         print(f"\n{BOLD}{CYAN}TARGET SELECTION{RESET}")
         print(f"{DIM}{'─' * 40}{RESET}")
         print(f"  {BOLD}1{RESET} - Single domain")
@@ -284,7 +383,7 @@ class LLMClient:
     def _check_prerequisites(self) -> bool:
         """Check if everything needed is available"""
         if not AIOHTTP_AVAILABLE:
-            print(f"{WARN} aiohttp not installed. AI features disabled. Install: pip install aiohttp")
+            print(f"{WARN} aiohttp not installed. AI disabled. Run: pip install aiohttp")
             return False
         
         if self.provider == LLMProvider.OLLAMA:
@@ -300,7 +399,7 @@ class LLMClient:
             return True
         
         if not self.api_key:
-            print(f"{WARN} No API key for {self.provider.value}. AI features disabled.")
+            print(f"{WARN} No API key for {self.provider.value}. AI disabled.")
             return False
         
         return True
@@ -320,8 +419,6 @@ class LLMClient:
             else:
                 return await self._call_openai_compatible(system_prompt, user_message)
         except Exception as e:
-            if self.enabled:
-                print(f"{WARN} LLM error: {e}")
             return None
     
     async def _call_claude(self, system_prompt: str, user_message: str) -> str:
@@ -427,7 +524,6 @@ Return ONLY a JSON array of strings. No markdown, no explanation."""
         return self._default_payloads(context)
     
     def _default_payloads(self, context: Dict) -> List[str]:
-        """Fallback payload generation without AI"""
         return [
             f"http://127.0.0.1/",
             f"http://localhost/",
@@ -442,7 +538,6 @@ Return ONLY a JSON array of strings. No markdown, no explanation."""
         ]
     
     async def triage_findings(self, findings: List[Dict]) -> Dict:
-        """AI analysis of findings"""
         if not self.enabled:
             return {"analysis": "AI disabled", "findings": findings}
         
@@ -468,7 +563,6 @@ Findings: {json.dumps(findings[:3], indent=2)}"""
         return {"analysis": "Could not parse AI response", "raw": str(response)[:500]}
     
     async def suggest_exploit_chain(self, vuln: Dict) -> List[Dict]:
-        """Suggest exploit chains"""
         if not self.enabled:
             return [{"chain": "Manual analysis required", "steps": ["Verify SSRF", "Test metadata", "Check internal services"]}]
         
@@ -493,7 +587,6 @@ Vulnerability: {json.dumps(vuln, indent=2)}"""
         return [{"chain": "AI unavailable", "steps": ["Manual analysis required"]}]
     
     async def plan_attack(self, target_info: Dict) -> Dict:
-        """Strategic attack planning"""
         if not self.enabled:
             return {
                 "strategy": "Standard SSRF testing",
@@ -528,17 +621,17 @@ class WAFFingerprinter:
     
     SIGNATURES = {
         "Cloudflare": {
-            "headers": ["cf-ray", "cf-cache-status", "__cfduid"],
+            "headers": ["cf-ray", "cf-cache-status"],
             "cookies": ["__cfduid", "cf_clearance"],
             "body": ["cloudflare", "attention required"]
         },
         "AWS WAF": {
-            "headers": ["x-amzn-requestid", "x-amz-cf-id", "x-amz-cf-pop"],
+            "headers": ["x-amzn-requestid", "x-amz-cf-id"],
             "cookies": ["aws-waf-token"],
             "body": ["request blocked", "awselb"]
         },
         "Akamai": {
-            "headers": ["x-akamai-transformed", "x-akamai-request-id"],
+            "headers": ["x-akamai-transformed"],
             "cookies": ["ak_bmsc"],
             "body": ["akamai", "reference #"]
         },
@@ -548,17 +641,17 @@ class WAFFingerprinter:
             "body": ["incapsula", "imperva"]
         },
         "F5 BIG-IP": {
-            "headers": ["x-wa-info", "x-cnection"],
+            "headers": ["x-wa-info"],
             "cookies": ["f5avr", "tso"],
             "body": ["f5 networks", "big-ip"]
         },
         "ModSecurity": {
             "headers": [],
             "cookies": [],
-            "body": ["mod_security", "modsecurity", "this error was generated by mod"]
+            "body": ["mod_security", "modsecurity"]
         },
         "Sucuri": {
-            "headers": ["x-sucuri-id", "x-sucuri-cache"],
+            "headers": ["x-sucuri-id"],
             "cookies": ["sucuri_cloudproxy_uuid"],
             "body": ["sucuri", "cloudproxy"]
         },
@@ -567,65 +660,25 @@ class WAFFingerprinter:
             "cookies": ["wfvt_"],
             "body": ["wordfence", "generated by wordfence"]
         },
-        "Barracuda": {
-            "headers": [],
-            "cookies": ["barra_counter_session"],
-            "body": ["barracuda", "barra counter"]
-        },
-        "Citrix NetScaler": {
-            "headers": ["cneonction", "nncoection"],
-            "cookies": ["nsc_", "nses"],
-            "body": ["citrix", "netscaler"]
-        },
-        "Fortinet FortiWeb": {
-            "headers": [],
-            "cookies": ["fortiwafsid"],
-            "body": ["fortiweb", "fortinet"]
-        },
-        "Radware": {
-            "headers": ["x-sl-compstate"],
-            "cookies": [],
-            "body": ["radware", "appwall"]
-        },
-        "Wallarm": {
-            "headers": ["x-wallarm"],
-            "cookies": [],
-            "body": ["wallarm"]
-        },
-        "DenyAll": {
-            "headers": [],
-            "cookies": ["sessioncookie"],
-            "body": ["denyall", "deny all"]
-        },
-        "Distil": {
-            "headers": ["x-distil"],
-            "cookies": ["distil"],
-            "body": ["distil networks"]
-        },
         "Fastly": {
             "headers": ["fastly-debug-digest", "x-served-by"],
             "cookies": [],
-            "body": ["fastly", "fastly error"]
+            "body": ["fastly"]
         },
         "Varnish": {
             "headers": ["x-varnish", "via"],
             "cookies": [],
-            "body": ["varnish", "cache server"]
+            "body": ["varnish"]
         },
         "Google Cloud Armor": {
             "headers": [],
             "cookies": [],
-            "body": ["google cloud armor", "error code 4"]
+            "body": ["google cloud armor"]
         },
         "Azure WAF": {
             "headers": ["x-ms-request-id", "x-azure-ref"],
             "cookies": [],
-            "body": ["azure web application firewall", "microsoft-azure"]
-        },
-        "Alibaba Cloud WAF": {
-            "headers": ["x-waf", "ali-cdn"],
-            "cookies": ["aliyungf"],
-            "body": ["alibaba", "alicloud"]
+            "body": ["azure web application firewall"]
         }
     }
     
@@ -633,32 +686,20 @@ class WAFFingerprinter:
         "Cloudflare": [
             "DNS rebinding (nip.io/sslip.io)",
             "IPv6 notation: http://[::ffff:127.0.0.1]/",
-            "Decimal IP: http://2130706433/",
-            "HTTP header injection",
-            "WebSocket upgrade smuggling"
+            "Decimal IP: http://2130706433/"
         ],
         "AWS WAF": [
-            "IMDSv1 downgrade (if v2 not enforced)",
-            "Alternative metadata IPs",
-            "PUT/PATCH methods with metadata headers",
-            "XML-based SSRF"
+            "IMDSv1 downgrade",
+            "Alternative metadata IPs"
         ],
         "Imperva": [
             "Double URL encoding",
             "Unicode normalization",
-            "gopher:// protocol",
-            "Fragment confusion"
+            "gopher:// protocol"
         ],
         "ModSecurity": [
             "CRLF injection",
-            "Hex encoding: %68%74%74%70://",
-            "Backslash bypass: http:\\\\127.0.0.1\\",
-            "Unicode bypass"
-        ],
-        "Akamai": [
-            "Origin IP discovery",
-            "DNS pinning attacks",
-            "HTTP request splitting"
+            "Hex encoding: %68%74%74%70://"
         ]
     }
     
@@ -675,19 +716,16 @@ class WAFFingerprinter:
             score = 0
             max_score = 0
             
-            # Headers
             for h in sigs["headers"]:
                 max_score += 2
                 if any(h.lower() in hk for hk in headers_lower):
                     score += 2
             
-            # Cookies
             for c in sigs["cookies"]:
                 max_score += 2
                 if any(c.lower() in ck for ck in cookie_keys):
                     score += 2
             
-            # Body
             for b in sigs["body"]:
                 max_score += 1
                 if b in body_lower:
@@ -718,7 +756,8 @@ class UltimateSSRFArsenal:
     
     def __init__(self, target: str, callback: str = None, delay: float = 0.5,
                  verbose: bool = True, headless: bool = True,
-                 ai_provider: str = None, ai_key: str = None, ai_model: str = None):
+                 ai_provider: str = None, ai_key: str = None, ai_model: str = None,
+                 enable_waf: bool = True):
         
         self.target = target
         self.base_url = f"https://{target}" if not target.startswith("http") else target
@@ -726,6 +765,7 @@ class UltimateSSRFArsenal:
         self.delay = delay
         self.verbose = verbose
         self.headless = headless
+        self.enable_waf = enable_waf
         
         # Results
         self.evidence = []
@@ -736,7 +776,7 @@ class UltimateSSRFArsenal:
         self.intercepted = []
         self.waf_info = {}
         
-        # Initialize components
+        # Components
         self.waf_detector = WAFFingerprinter()
         
         # AI (optional)
@@ -751,9 +791,6 @@ class UltimateSSRFArsenal:
             else:
                 if self.verbose:
                     print(f"{WARN} AI disabled - provider not available")
-        else:
-            if self.verbose:
-                print(f"{DIM}AI features disabled (use --ai-provider to enable){RESET}")
         
         # Playwright
         self.playwright = None
@@ -761,8 +798,10 @@ class UltimateSSRFArsenal:
         self.page = None
         
         # Files
-        self.results_file = f"ssrf_{target}_{datetime.now():%Y%m%d_%H%M%S}.json"
-        self.report_file = f"ssrf_report_{target}_{datetime.now():%Y%m%d_%H%M%S}.html"
+        safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', target)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.results_file = f"ssrf_{safe_target}_{timestamp}.json"
+        self.report_file = f"ssrf_report_{safe_target}_{timestamp}.html"
         
         # Concurrency
         self.sem = asyncio.Semaphore(10)
@@ -915,8 +954,6 @@ class UltimateSSRFArsenal:
             "/graphql", "/gql", "/health", "/status"
         ]
         
-        test_url = f"http://{self.callback_host}/discovery-{random.randint(1000,9999)}"
-        
         for path in paths:
             try:
                 url = f"{self.base_url}{path}"
@@ -941,12 +978,15 @@ class UltimateSSRFArsenal:
                 pass
         
         if self.verbose:
-            print(f"  {OK} Found {len(self.endpoints)} endpoints, {len(self.params)} params")
+            print(f"  {OK} Found {len(self.endpoints)} endpoints")
         
         return self.endpoints
     
     async def detect_waf(self):
         """Detect WAF"""
+        if not self.enable_waf:
+            return
+        
         if self.verbose:
             print(f"\n{CYAN}[WAF]{RESET} Detecting firewall...")
         
@@ -970,7 +1010,6 @@ class UltimateSSRFArsenal:
         if self.verbose:
             print(f"\n{PURPLE}{BOLD}[AI PHASES]{RESET} Running AI-powered analysis...")
         
-        # AI-generated payloads
         context = {
             "target": self.target,
             "waf": self.waf_info.get("primary", "None"),
@@ -982,14 +1021,12 @@ class UltimateSSRFArsenal:
         if self.verbose:
             print(f"  {AI_ICON} Generated {len(ai_payloads)} custom payloads")
         
-        # Test AI payloads on first endpoint
         if self.endpoints and ai_payloads:
             ep = self.endpoints[0]
             param = list(ep.params)[0] if ep.params else "url"
             for payload in ai_payloads[:5]:
                 await self.test_payload(ep, param, payload, "AI-Generated", "AI Payload")
         
-        # AI triage
         if self.evidence:
             triage = await self.ai.triage_findings([
                 {"endpoint": e.endpoint, "param": e.param, "severity": e.severity, "patterns": e.matched_patterns[:2]}
@@ -999,7 +1036,6 @@ class UltimateSSRFArsenal:
                 risk = triage.get("overall_risk", "unknown")
                 print(f"  {AI_ICON} AI Risk Assessment: {YELLOW}{risk.upper()}{RESET}")
         
-        # AI exploit chains
         if self.evidence:
             chains = await self.ai.suggest_exploit_chain({
                 "endpoint": self.evidence[0].endpoint,
@@ -1017,7 +1053,6 @@ class UltimateSSRFArsenal:
         if self.verbose:
             print(f"\n{CYAN}[BASIC PHASES]{RESET} Running standard SSRF tests...")
         
-        # Test params
         test_params = ["url", "uri", "file", "path", "redirect", "proxy", "fetch", "download", "callback"]
         
         for ep in self.endpoints[:5]:
@@ -1031,32 +1066,19 @@ class UltimateSSRFArsenal:
         print(f"{BOLD}Target:{RESET} {self.target}")
         print(f"{BOLD}Callback:{RESET} {self.callback_host}")
         print(f"{BOLD}AI:{RESET} {'Enabled' if self.ai and self.ai.enabled else 'Disabled'}")
+        print(f"{BOLD}WAF:{RESET} {'Enabled' if self.enable_waf else 'Disabled'}")
         print(f"{BOLD}{'='*50}{RESET}")
         
         await self.start()
         
         try:
-            # Phase 1: WAF Detection
             await self.detect_waf()
-            
-            # Phase 2: Discovery
             await self.discover()
-            
-            # Phase 3: Basic tests
             await self.run_basic_phases()
-            
-            # Phase 4: AI-powered tests (optional)
             await self.run_ai_phases()
-            
-            # Save results
             await self.save_results()
-            
-            # Generate HTML report
             await self.generate_report()
-            
-            # Print summary
             self.print_summary()
-            
         finally:
             await self.stop()
     
@@ -1191,9 +1213,7 @@ class UltimateSSRFArsenal:
 
 
 # ==================== MAIN ====================
-async def scan_targets(targets: List[str], callback: str, delay: float, 
-                       ai_provider: str, ai_key: str, ai_model: str,
-                       verbose: bool, headless: bool):
+async def scan_targets(targets: List[str], args: argparse.Namespace):
     """Scan multiple targets"""
     all_results = []
     
@@ -1203,13 +1223,14 @@ async def scan_targets(targets: List[str], callback: str, delay: float,
         
         arsenal = UltimateSSRFArsenal(
             target=target,
-            callback=callback,
-            delay=delay,
-            verbose=verbose,
-            headless=headless,
-            ai_provider=ai_provider,
-            ai_key=ai_key,
-            ai_model=ai_model
+            callback=args.callback,
+            delay=args.delay,
+            verbose=not args.quiet,
+            headless=not args.visible,
+            ai_provider=args.ai_provider,
+            ai_key=args.ai_key,
+            ai_model=args.ai_model,
+            enable_waf=not args.no_waf
         )
         
         await arsenal.run_full_scan()
@@ -1228,7 +1249,6 @@ async def scan_targets(targets: List[str], callback: str, delay: float,
             print(f"\n{DIM}Waiting 5 seconds before next target...{RESET}")
             await asyncio.sleep(5)
     
-    # Print consolidated summary
     if len(targets) > 1:
         print(f"\n{BOLD}{GREEN}{'='*50}{RESET}")
         print(f"{BOLD}{GREEN}  CONSOLIDATED SUMMARY - {len(targets)} TARGETS{RESET}")
@@ -1240,107 +1260,20 @@ async def scan_targets(targets: List[str], callback: str, delay: float,
         for r in all_results:
             print(f"\n  {BOLD}{r['target']}{RESET}")
             print(f"    WAF: {r['waf']}")
-            print(f"    Endpoints: {r['endpoints']}")
-            print(f"    Findings: {r['findings']}")
-            print(f"    Callbacks: {r['callbacks']}")
+            print(f"    Findings: {r['findings']} | Callbacks: {r['callbacks']}")
         
-        print(f"\n  {BOLD}Total:{RESET}")
-        print(f"    Findings: {total_findings}")
-        print(f"    Callbacks: {total_callbacks}")
+        print(f"\n  {BOLD}Total:{RESET} {total_findings} findings, {total_callbacks} callbacks")
 
 
 async def main():
+    """Main entry point with proper argparse"""
+    parser = setup_argparse()
+    args = parser.parse_args()
+    
     print(BANNER)
     
-    # Parse CLI args for targets
-    targets = TargetManager.from_cli_args(sys.argv[1:])
-    
-    # Parse other CLI args
-    callback = None
-    delay = 0.5
-    ai_provider = None
-    ai_key = None
-    ai_model = None
-    verbose = True
-    headless = True
-    
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--callback" and i+1 < len(args):
-            callback = args[i+1]; i += 2
-        elif arg == "--delay" and i+1 < len(args):
-            delay = float(args[i+1]); i += 2
-        elif arg == "--ai-provider" and i+1 < len(args):
-            ai_provider = args[i+1]; i += 2
-        elif arg == "--ai-key" and i+1 < len(args):
-            ai_key = args[i+1]; i += 2
-        elif arg == "--ai-model" and i+1 < len(args):
-            ai_model = args[i+1]; i += 2
-        elif arg in ["--quiet", "-q"]:
-            verbose = False; i += 1
-        elif arg == "--visible":
-            headless = False; i += 1
-        elif arg == "--help":
-            print("""
-╔══════════════════════════════════════════════════════════════╗
-║              ULTIMATE SSRF ARSENAL v4.0                      ║
-║                    HELP & USAGE                              ║
-╚══════════════════════════════════════════════════════════════╝
-
-TARGET OPTIONS (choose one):
-  --target DOMAIN           Single target domain
-  --targets DOMAINS         Multiple targets (comma-separated)
-  --target-file FILE        Load targets from file (one per line)
-
-CALLBACK OPTIONS:
-  --callback HOST           Callback host for blind SSRF detection
-
-DELAY OPTIONS:
-  --delay SECONDS           Delay between requests (default: 0.5)
-
-AI OPTIONS (optional):
-  --ai-provider PROVIDER    LLM provider: claude, openai, ollama, gemini, mistral, deepseek
-  --ai-key KEY              API key for cloud providers
-  --ai-model MODEL          Specific model name
-
-DISPLAY OPTIONS:
-  --quiet, -q               Less verbose output
-  --visible                 Show browser window (not headless)
-  --help                    Show this help
-
-EXAMPLES:
-  # Single target (basic)
-  python ssrf_arsenal.py --target example.com
-
-  # Multiple targets (comma-separated)
-  python ssrf_arsenal.py --targets "example.com,test.com,api.org"
-
-  # Load from file
-  python ssrf_arsenal.py --target-file targets.txt
-
-  # With callback and AI
-  python ssrf_arsenal.py --target example.com --callback burp.oastify.com --ai-provider ollama
-
-  # With Claude AI
-  python ssrf_arsenal.py --target example.com --ai-provider claude --ai-key YOUR_KEY
-
-  # Quiet mode
-  python ssrf_arsenal.py --targets "example.com,test.com" --quiet
-
-FILE FORMAT (targets.txt):
-  example.com
-  test-site.org
-  api.internal.com
-  # Comments start with #
-            
-            """)
-            return
-        elif arg in ["--target", "--targets", "--target-file"]:
-            i += 2  # Skip value (already processed by TargetManager)
-        else:
-            i += 1
+    # Get targets
+    targets = TargetManager.from_args(args)
     
     # Interactive mode if no targets from CLI
     if not targets:
@@ -1350,50 +1283,48 @@ FILE FORMAT (targets.txt):
             print(f"{FAIL} No targets provided")
             return
         
-        callback = input(f"{WARN} Callback host [optional]: ").strip() or None
+        # Get additional options interactively
+        args.callback = input(f"{WARN} Callback host [optional]: ").strip() or None
         
         use_ai = input(f"{WARN} Enable AI? (none/claude/openai/ollama/gemini/mistral/deepseek) [none]: ").strip().lower()
         if use_ai and use_ai != "none":
-            ai_provider = use_ai
-            if ai_provider != "ollama":
-                ai_key = input(f"{WARN} API key: ").strip()
+            args.ai_provider = use_ai
+            if use_ai != "ollama":
+                args.ai_key = input(f"{WARN} API key: ").strip()
         
         delay_input = input(f"{WARN} Delay [0.5]: ").strip()
-        delay = float(delay_input) if delay_input else 0.5
+        args.delay = float(delay_input) if delay_input else 0.5
+        
+        args.quiet = False
     
     if not targets:
         print(f"{FAIL} No targets to scan")
         return
     
-    # Show scan configuration
+    # Show configuration
     print(f"\n{BOLD}{CYAN}SCAN CONFIGURATION{RESET}")
     print(f"{DIM}{'─' * 40}{RESET}")
     print(f"  Targets: {len(targets)} domain(s)")
-    for t in targets:
+    for t in targets[:10]:
         print(f"    • {t}")
-    print(f"  Callback: {callback or 'Not configured'}")
-    print(f"  Delay: {delay}s")
-    print(f"  AI: {ai_provider or 'Disabled'}")
+    if len(targets) > 10:
+        print(f"    ... and {len(targets) - 10} more")
+    print(f"  Callback: {args.callback or 'Not configured'}")
+    print(f"  Delay: {args.delay}s")
+    print(f"  AI: {args.ai_provider or 'Disabled'}")
+    print(f"  WAF: {'Disabled' if args.no_waf else 'Enabled'}")
+    print(f"  Mode: {'Quiet' if args.quiet else 'Verbose'}")
     print(f"{DIM}{'─' * 40}{RESET}")
     
     # Confirm
-    if verbose:
+    if not args.quiet:
         confirm = input(f"\n{WARN} Start scan? [Y/n]: ").strip().lower()
         if confirm == 'n':
             print(f"{WARN} Scan cancelled")
             return
     
-    # Run scan
-    await scan_targets(
-        targets=targets,
-        callback=callback,
-        delay=delay,
-        ai_provider=ai_provider,
-        ai_key=ai_key,
-        ai_model=ai_model,
-        verbose=verbose,
-        headless=headless
-    )
+    # Run
+    await scan_targets(targets, args)
 
 
 if __name__ == "__main__":
