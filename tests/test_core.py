@@ -25,7 +25,7 @@ def args_for_tests(tmp_path=None, **changes):
         "export_siem": False,
         "export_json_api": False,
         "attack_map": False,
-        "output": content(tmp_path or Path(".")),
+        "output": str(tmp_path or Path(".")),
         "ai_provider": None,
         "ai_key": None,
         "ai_model": None,
@@ -156,7 +156,7 @@ def test_dedup_keeps_worst_severity_and_oob_count(tmp_path):
 
     grouped = framework._dedup()
 
-    assert total(grouped)  == 1
+    assert len(grouped) == 1
     assert grouped[("/api", "url")]["max_sev"]  == "critical"
     assert grouped[("/api", "url")]["oob"]  == 1
 
