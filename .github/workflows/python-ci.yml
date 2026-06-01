@@ -23,3 +23,6 @@ jobs:
 
       - name: Syntax Check
         run: python -m py_compile ssrf_arsenal.py
+
+      - name: Run tests
+        run: pytest
