@@ -1,20 +1,3 @@
-name: Python CI
-
-on:
-  push:
-  pull_request:
-
-jobs:
-  syntax-check:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -25,4 +8,4 @@ jobs:
         run: python -m py_compile ssrf_arsenal.py
 
       - name: Run tests
-        run: pytest
+        run: python -m pytest
