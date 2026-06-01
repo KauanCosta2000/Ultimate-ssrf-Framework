@@ -1,57 +1,54 @@
 Contributing
 
-Thank you for your interest in contributing to Ultimate SSRF Arsenal.
+Thank you for considering contributions to Ultimate SSRF Arsenal.
 
-Contributions of all sizes are welcome, including:
+All forms of contributions are highly appreciated, such as:
 
 Bug fixes
-New SSRF techniques
-Payload improvements
-WAF fingerprints
-Cloud metadata research
-Documentation improvements
-Performance optimizations
-AI integrations
+SSRF techniques
+Payloads
+WAF signatures
+Cloud metadata analysis
+Optimizations
+AI capabilities
 Getting Started
 Fork the repository.
 Create a feature branch.
 git checkout -b feature/my-feature
-Make your changes.
-Commit your work.
-git commit -m "Add new feature"
-Push to your fork.
+Modify the code.
+Commit your changes.
+git commit -m "New feature added"
+Push changes to your fork.
 git push origin feature/my-feature
-Open a Pull Request.
-Development Guidelines
-Code Style
-Keep code readable and well documented.
-Use descriptive variable and function names.
-Follow existing project conventions whenever possible.
-Avoid unnecessary dependencies.
+Submit Pull Request.
+Development
+Coding guidelines
+Maintain clean code.
+Use expressive variables and function names.
+Adhere to project conventions wherever possible.
+Minimize dependencies.
 Pull Requests
-
-Please ensure that:
-
-The code runs correctly.
-Existing functionality is not broken.
-Documentation is updated when needed.
-Pull requests remain focused on a single feature or fix.
-Areas Where Contributions Are Especially Welcome
-SSRF Research
-New SSRF payloads
-Protocol smuggling techniques
-DNS rebinding improvements
-Cloud metadata bypasses
-WAF bypass techniques
-AI Enhancements
-Additional LLM providers
-Better prompt engineering
-Payload generation improvements
-Vulnerability triage enhancements
+Ensure that:
+Everything is working fine.
+No existing features were affected.
+Update documentation if necessary.
+Pull request remains focused on one thing at a time.
+Specific areas where contributions are welcome:
+Research
+New SSRF exploits
+Protocol smuggling
+DNS rebinding
+Cloud metadata
+WAF bypasses
+AI
+More LLM services
+Prompt engineering
+Payload generation
+Vulnerability triage
 Reporting
-HTML report improvements
-Dashboard features
-Export formats
+Report improvements
+Dashboards
+Reports export formats
 Visualization features
 Integrations
 Burp Suite
@@ -60,20 +57,20 @@ Nuclei
 DefectDojo
 Slack
 Discord
-Security Issues
+Security Vulnerabilities
 
-Please do not disclose security vulnerabilities publicly.
+Never share any vulnerability information publicly.
 
-Refer to SECURITY.md for responsible disclosure instructions.
+For responsible disclosure please see SECURITY.md.
 
 Code of Conduct
 
-Be respectful and constructive.
+Being respectful and constructive.
 
-Harassment, discrimination, spam, or abusive behavior will not be tolerated.
+Any kind of harassment, discrimination, spam, or inappropriate behaviour will not be tolerated.
 
 Questions
 
-If you have questions, ideas, or feature suggestions, feel free to open an issue or start a discussion.
+If you have any questions or suggestions regarding future development, don't hesitate to create an issue.
 
-Happy Hunting.
+Happy hunting.
