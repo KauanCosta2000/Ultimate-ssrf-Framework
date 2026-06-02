@@ -211,6 +211,60 @@ hunter  Best default option for security analysis, vulnerability triage, logs, A
 sage    Best for deeper reports, executive summaries, attribution and multi-incident correlation.
 ```
 
+#### Using the Sheep token safely
+
+Sheep AI support is experimental.
+
+Available models:
+
+```text
+auto    Lets Sheep choose between Scout and Hunter automatically.
+scout   Best for quick answers, short definitions and lightweight explanations.
+hunter  Best default option for security analysis, vulnerability triage, logs, APTs and MITRE ATT&CK mapping.
+sage    Best for deeper reports, executive summaries, attribution and multi-incident correlation.
+```
+
+Do not paste your Sheep token directly into commands, scripts, README files or commits.  
+Use an environment variable instead.
+
+Linux / macOS / Kali:
+
+```bash
+export SHEEP_TOKEN="shp_YOUR_TOKEN_HERE"
+```
+
+Then run the scanner using the variable:
+
+```bash
+python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model auto --export-json-api
+```
+
+```bash
+python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model scout --export-json-api
+```
+
+```bash
+python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model hunter --export-json-api
+```
+
+```bash
+python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model sage --delay 2 --output reports-sheep-sage --no-grpc --no-websocket --no-k8s --no-serverless --export-json-api
+```
+
+PowerShell:
+
+```powershell
+$env:SHEEP_TOKEN="shp_YOUR_TOKEN_HERE"
+```
+
+Then run:
+
+```powershell
+python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$env:SHEEP_TOKEN" --ai-model hunter --export-json-api
+```
+
+If a Sheep token is accidentally exposed, rotate it immediately.
+
 ## Built-in Payloads
 
 The framework ships with a built-in SSRF payload list so you do not have to start every test from scratch.
