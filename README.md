@@ -192,6 +192,21 @@ python ssrf_arsenal.py \
 --ai-model             Specific model name
 ```
 
+### Sheep AI Experimental Support
+
+Sheep AI support is currently experimental and may change in future versions.
+
+Sheep AI is supported through the `sheep` provider.
+
+Available models:
+
+```text
+auto    Lets Sheep choose between Scout and Hunter automatically.
+scout   Best for quick answers, short definitions and lightweight explanations.
+hunter  Best default option for security analysis, vulnerability triage, logs, APTs and MITRE ATT&CK mapping.
+sage    Best for deeper reports, executive summaries, attribution and multi-incident correlation.
+```
+
 ## Built-in Payloads
 
 The framework ships with a built-in SSRF payload list so you do not have to start every test from scratch.
