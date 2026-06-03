@@ -61,6 +61,8 @@ Security Vulnerabilities
 
 Never share any vulnerability information publicly.
 
+Do not submit destructive payloads enabled by default. Dangerous payloads must remain behind the --dangerous-payloads flag.
+
 For responsible disclosure please see SECURITY.md.
 
 Code of Conduct
