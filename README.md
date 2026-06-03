@@ -1,4 +1,4 @@
-# Ultimate SSRF Framework v5.0-experimental
+# Ultimate SSRF Framework v4.2-experimental
 
 <div align="center">
 
@@ -19,6 +19,9 @@ Created and maintained by **belladonnask**.
 </div>
 
 ---
+## Banner licensing
+
+Banner created by the designer https://x.com/Fezitooo1 < Go check him out no AI was used during the creation of the banner.
 
 ## Important read first!!!
 
