@@ -266,4 +266,9 @@ def test_json_api_export_writes_a_small_summary(tmp_path):
     assert report.exists()
     assert data["target"] == "example.com"
     assert data["cloud"] == ["AWS"]
-    assert data["callbacks"] == 1
+    assert data["is_vulnerable_to_ssrf"] is False
+    assert data["status"] == "not_confirmed"
+    assert "attempt_summary" in data
+    assert "vulnerable_payloads" in data
+    assert "not_confirmed_payloads" in data
+    assert "errors" in data
