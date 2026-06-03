@@ -1,4 +1,4 @@
-# Ultimate SSRF Framework v4.2-experimental
+# Ultimate SSRF Framework v5.0-experimental
 
 <div align="center">
 
@@ -12,7 +12,9 @@
 ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 ![CI](https://github.com/KauanCosta2000/Ultimate-ssrf-Framework/actions/workflows/python-ci.yml/badge.svg)
 
-A research-focused SSRF testing framework built for bug bounty hunting, penetration testing and application security research.
+<br>
+
+A WAF-aware SSRF discovery, validation and analysis framework built for authorized bug bounty hunting, penetration testing and application security research.
 
 Created and maintained by **belladonnask**.
 
@@ -29,9 +31,14 @@ Created and maintained by **belladonnask**.
 </div>
 
 ---
-## Banner licensing
 
-Banner created by the designer https://x.com/Fezitooo1 < Go check him out!
+## Banner Credits
+
+Project banner designed by **Fezito**.
+
+X / Twitter: https://x.com/Fezitooo1
+
+---
 
 ## Important read first!!!
 
@@ -45,19 +52,19 @@ Some modules are experimental and may produce false positives.
 
 `not_confirmed` does not mean the target is safe. It only means the scanner did not confirm SSRF for that specific endpoint, parameter and payload.
 
-Reports may include tested payloads, callback domains, internal IP references and scanned URLs. Review generated files before sharing them publicly.
+Reports may include tested payloads, callback domains, internal IP references, AI-generated output and scanned URLs. Review generated files before sharing them publicly.
 
 ---
 
 ## About
 
-Ultimate SSRF Framework started as a collection of SSRF testing scripts I used during bug bounty hunting.
+Ultimate SSRF Framework started as a collection of SSRF testing scripts used during bug bounty research.
 
-As the project grew, I kept adding the things I found myself doing repeatedly: endpoint discovery, blind SSRF validation, cloud metadata testing, reporting, WAF fingerprinting, AI-assisted analysis and payload tracking.
+As the project grew, it became a framework for endpoint discovery, blind SSRF validation, cloud metadata testing, WAF fingerprinting, payload tracking, reporting, attack path mapping and optional AI-assisted analysis.
 
-The result is a framework that can handle most of the SSRF workflow from a single command line interface.
+Version 5.0 introduces a more WAF-aware testing flow, expanded experimental modules, better per-payload reporting and support for AI-suggested safe checks.
 
-The main goal is to reduce repetitive work and make it easier to discover, validate and document SSRF findings.
+The goal is simple: reduce repetitive SSRF testing work and make it easier to discover, validate and document findings in authorized environments.
 
 ---
 
@@ -68,9 +75,11 @@ Current capabilities include:
 * Endpoint discovery and crawling
 * Blind SSRF validation
 * Cloud metadata testing
-* WAF fingerprinting
+* Expanded WAF fingerprinting
+* WAF-aware bypass suggestions
 * File-based target scanning
 * Multi-target scanning
+* Single-target parameter selection with `--param`
 * Built-in SSRF payload set
 * Optional dangerous payload mode
 * Per-payload result tracking
@@ -79,9 +88,15 @@ Current capabilities include:
 * WebSocket SSRF testing
 * gRPC SSRF testing
 * Kubernetes SSRF testing
+* Kubernetes ingress SSRF checks
 * Serverless SSRF testing
+* GraphQL SSRF testing
+* API schema bypass checks
+* Service mesh SSRF checks
+* Bot evasion testing
 * AI-assisted payload generation
 * AI-assisted finding triage
+* AI-Suggested Safe Checks
 * Experimental Sheep AI support
 * AI payload logging
 * HTML reporting
@@ -107,8 +122,14 @@ The following modules are experimental and should be manually reviewed before re
 * WebSocket SSRF testing
 * gRPC SSRF testing
 * Kubernetes SSRF testing
+* Kubernetes ingress testing
 * Serverless SSRF testing
+* GraphQL SSRF testing
+* API schema bypass checks
+* Service mesh checks
+* Bot evasion checks
 * Sheep AI integration
+* AI-Suggested Safe Checks
 * Attack map generation
 * Nuclei export
 * SIEM export
@@ -195,6 +216,10 @@ python ssrf_arsenal.py \
 --no-websocket \
 --no-k8s \
 --no-serverless \
+--no-graphql \
+--no-api-schema \
+--no-mesh \
+--no-bot-evasion \
 --export-json-api
 ```
 
@@ -244,9 +269,27 @@ python ssrf_arsenal.py --help
 --target, -t           Single target domain
 --targets              Comma-separated targets
 --target-file, -f      File containing targets, one target per line
+--param                Specific parameter to test on a single target
 ```
 
-### Callback / OAST
+### Single target with a specific parameter
+
+Use `--param` when you already know which parameter should be tested.
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--param redirect_url \
+--callback your-callback.oastify.com
+```
+
+`--param` is intended for single-target testing only.
+
+For mass scanning with `--targets` or `--target-file`, omit `--param` and let the framework discover parameters automatically.
+
+---
+
+## Callback / OAST Options
 
 ```text
 --callback, -c         Out-of-band callback host
@@ -262,7 +305,9 @@ python ssrf_arsenal.py \
 --burp-collaborator abc123.burpcollaborator.net
 ```
 
-### Proxy Support
+---
+
+## Proxy Support
 
 ```text
 --proxy, -p            Single proxy URL
@@ -279,7 +324,9 @@ python ssrf_arsenal.py \
 --proxy http://127.0.0.1:8080
 ```
 
-### AI Integration
+---
+
+## AI Integration
 
 ```text
 --ai-provider          claude | openai | ollama | gemini | mistral | deepseek | sheep | none
@@ -291,6 +338,17 @@ python ssrf_arsenal.py \
 AI-generated payloads and AI triage summaries are helper output, not proof of impact.
 
 Always validate findings manually before submitting a bug bounty report or sending results to a security team.
+
+Supported providers:
+
+* OpenAI
+* Claude
+* Gemini
+* Ollama
+* Mistral
+* DeepSeek
+* Sheep AI
+* None / Disabled
 
 ---
 
@@ -359,6 +417,12 @@ Linux / macOS / Kali:
 export SHEEP_TOKEN="shp_YOUR_TOKEN_HERE"
 ```
 
+Alternative variable:
+
+```bash
+export SHEEP_API_TOKEN="shp_YOUR_TOKEN_HERE"
+```
+
 PowerShell:
 
 ```powershell
@@ -369,25 +433,35 @@ If a Sheep token is accidentally exposed, rotate it immediately.
 
 ### Sheep model examples
 
+Auto:
+
 ```bash
 python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model auto --export-json-api
 ```
+
+Scout:
 
 ```bash
 python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model scout --export-json-api
 ```
 
+Hunter:
+
 ```bash
 python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model hunter --export-json-api
 ```
+
+Sage:
 
 ```bash
 python ssrf_arsenal.py --target example.com --callback your-callback.oastify.com --ai-provider sheep --ai-key "$SHEEP_TOKEN" --ai-model sage --delay 2 --output reports-sheep-sage --no-grpc --no-websocket --no-k8s --no-serverless --export-json-api
 ```
 
-### AI Payload Logs
+---
 
-When AI is enabled, the framework can save AI-generated payload information into a JSON file.
+## AI Payload Logs
+
+When AI is enabled, the framework may save AI-generated payload information into a JSON file.
 
 Example output:
 
@@ -402,6 +476,13 @@ The file may include:
   "target": "example.com",
   "provider": "sheep",
   "model": "hunter",
+  "ai_usage": {
+    "provider": "sheep",
+    "model_requested": "hunter",
+    "served_by": "hunter",
+    "tokens_used": 1234
+  },
+  "ai_error": null,
   "ai_generated_payloads": [],
   "all_payloads_used": [],
   "tested_payloads": []
@@ -409,6 +490,38 @@ The file may include:
 ```
 
 This helps review which payloads were generated by the model and which ones were actually tested.
+
+---
+
+## AI-Suggested Safe Checks
+
+When AI is enabled, the framework can ask the selected model to suggest additional safe checks based on discovered endpoints and parameters.
+
+The AI does not execute arbitrary commands or free-form exploits. It only returns structured JSON suggestions, and the framework executes checks from an allowlist.
+
+Allowed issue types:
+
+```text
+ssrf
+open_redirect
+cors_misconfig
+header_injection
+path_traversal_readonly
+information_disclosure
+authz_review
+```
+
+Results may be classified as:
+
+```text
+vulnerable              Confirmed SSRF evidence
+suspected_other_issue   Potential non-SSRF issue requiring manual validation
+manual_review           Needs human review
+not_confirmed           No evidence confirmed
+error                   Request or runtime error
+```
+
+AI-suggested checks are helper output and must be manually validated before being reported.
 
 ---
 
@@ -450,6 +563,10 @@ In normal bug bounty testing, start without `--dangerous-payloads` and only enab
 --no-grpc              Disable gRPC SSRF tests
 --no-k8s               Disable Kubernetes SSRF tests
 --no-serverless        Disable Serverless SSRF tests
+--no-graphql           Disable GraphQL SSRF tests
+--no-api-schema        Disable API schema bypass checks
+--no-mesh              Disable service mesh SSRF checks
+--no-bot-evasion       Disable bot evasion checks
 --no-ai                Disable AI features
 --dangerous-payloads   Enable dangerous/destructive SSRF payloads
 ```
@@ -507,14 +624,15 @@ Generated files may include:
 
 ```text
 reports/
- - ssrf_example.com_YYYYMMDD_HHMMSS.json
- - ssrf_report_example.com_YYYYMMDD_HHMMSS.html
- - nuclei_example.com.yaml
- - siem_example.com.cef
- - api_report_example.com.json
- - attack_map_example.com.gexf
- - ai_payloads_example.com.json
- - ai_triage_example.com.md
+- ssrf_example.com_YYYYMMDD_HHMMSS.json
+- ssrf_report_example.com_YYYYMMDD_HHMMSS.html
+- nuclei_example.com.yaml
+- siem_example.com.cef
+- api_report_example.com.json
+- attack_map_example.com.gexf
+- ai_payloads_example.com.json
+- ai_suggestions_example.com.json
+- ai_triage_example.com.md
 ```
 
 Do not enable `--dangerous-payloads` unless you are fully authorized to run aggressive payloads.
@@ -556,12 +674,13 @@ It includes:
 * Scan status
 * Cloud detection notes
 * Endpoint count
-* Raw and unique findings
+* Finding count
 * Callback count
 * Confirmed findings
 * Payload attempt table
 * Per-payload status
 * Evidence or error details
+* AI-suggested safe checks
 
 If no SSRF is confirmed, the HTML report still shows tested payloads as `not_confirmed`.
 
@@ -600,6 +719,7 @@ The graph can include relationships between:
 * Confirmed payloads
 * Internal IP references
 * Callback evidence
+* AI-suggested checks
 
 Example output:
 
@@ -625,6 +745,36 @@ python ssrf_arsenal.py \
 Templates are generated only when applicable evidence exists.
 
 If PyYAML is installed, YAML output is used. Otherwise, JSON output may be generated as fallback.
+
+---
+
+## WAF-Aware Testing
+
+Version 5.0 includes expanded WAF fingerprinting and WAF-aware testing context.
+
+The framework can identify signals from multiple WAFs and security layers, including:
+
+* Cloudflare
+* AWS WAF
+* Akamai
+* Fastly
+* Imperva
+* F5 BIG-IP
+* Azure Front Door / WAF
+* Google Cloud Armor
+* Sucuri
+* Barracuda
+* Fortinet FortiWeb
+* Radware AppWall
+* Citrix NetScaler / ADC WAF
+* Wallarm
+* DataDome
+* HUMAN / PerimeterX
+* Kong API Gateway
+* Apigee
+* ModSecurity / OWASP CRS
+
+WAF bypass suggestions are informational and should be manually reviewed before use.
 
 ---
 
@@ -712,6 +862,73 @@ GitHub Actions can be used to run CI automatically on push and pull requests.
 
 ---
 
+## Suggested Workflow
+
+A safe first run usually looks like this:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--callback your-callback.oastify.com \
+--delay 2 \
+--output reports-example \
+--no-ai \
+--no-grpc \
+--no-websocket \
+--no-k8s \
+--no-serverless \
+--no-graphql \
+--no-api-schema \
+--no-mesh \
+--no-bot-evasion \
+--export-json-api
+```
+
+Then review the report.
+
+If you have authorization and want deeper testing, enable additional modules and exports:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--callback your-callback.oastify.com \
+--delay 2 \
+--output reports-example \
+--export-json-api \
+--export-nuclei \
+--export-siem \
+--attack-map
+```
+
+If you want AI-assisted testing:
+
+```bash
+python ssrf_arsenal.py \
+--target example.com \
+--callback your-callback.oastify.com \
+--ai-provider sheep \
+--ai-key "$SHEEP_TOKEN" \
+--ai-model auto \
+--output reports-ai \
+--export-json-api
+```
+
+---
+
+## Limitations
+
+* The scanner cannot prove that a target is safe.
+* Lack of callback does not prove lack of SSRF.
+* Some findings may be false positives and require manual validation.
+* Some applications block outbound requests or sanitize payloads before execution.
+* Some modules are experimental and may require tuning.
+* AI output may be incomplete, noisy or wrong.
+* Payload behavior should be reviewed before testing sensitive environments.
+* WAF bypass suggestions are informational and not proof of vulnerability.
+* AI-suggested safe checks are not automatically valid findings.
+
+---
+
 ## Development Status
 
 This project is actively maintained and new modules are added whenever I find interesting SSRF research areas worth exploring.
@@ -721,7 +938,12 @@ Current research-focused modules include:
 * WebSocket SSRF
 * gRPC SSRF
 * Kubernetes SSRF
+* Kubernetes ingress checks
 * Serverless SSRF
+* GraphQL SSRF
+* API schema bypass checks
+* Service mesh checks
+* Bot evasion checks
 * AI-assisted workflows
 * Sheep AI integration
 * Payload attempt tracking
@@ -735,7 +957,7 @@ Some of these features are still evolving and will continue to improve over futu
 
 Planned work includes:
 
-* GraphQL SSRF discovery
+* Better GraphQL SSRF discovery
 * HTTP/2 request smuggling research
 * DNS rebinding improvements
 * Internal service fingerprinting
@@ -745,6 +967,8 @@ Planned work includes:
 * Discord notifications
 * Better AI-assisted triage templates
 * Better report diffing between scans
+* More WAF signatures
+* Better false-positive reduction
 
 ---
 
@@ -758,18 +982,6 @@ Please review:
 * SECURITY.md
 
 before opening a pull request.
-
----
-
-## Limitations
-
-* The scanner cannot prove that a target is safe.
-* Lack of callback does not prove lack of SSRF.
-* Some findings may be false positives and require manual validation.
-* Some applications block outbound requests or sanitize payloads before execution.
-* Some modules are experimental and may require tuning.
-* AI output may be incomplete, noisy or wrong.
-* Payload behavior should be reviewed before testing sensitive environments.
 
 ---
 
