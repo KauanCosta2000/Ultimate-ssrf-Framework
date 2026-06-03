@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse
+import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse, time
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple
@@ -189,7 +189,7 @@ def setup_argparse():
     proxy_group.add_argument("--proxy-type", choices=["http","socks5"], default="http")
     ai_group = parser.add_argument_group("AI Integration (Optional)")
     ai_group.add_argument("--ai-provider", choices=["claude","openai","ollama","gemini","mistral","deepseek","sheep","none"])
-    ai_group.add_argument("--ai-key", help="API key for cloud AI")
+    ai_group.add_argument("--ai-key", help="API key or provider token. Sheep can also use SHEEP_TOKEN or SHEEP_API_TOKEN")
     ai_group.add_argument("--ai-model", help="Specific model name")
     feature_group = parser.add_argument_group("Feature Control")
     feature_group.add_argument("--no-waf", action="store_true", help="Disable WAF detection")
@@ -288,6 +288,21 @@ class ProxyManager:
             self.idx += 1
             return p
 
+SHEEP_BASE_URL = "https://sheep.byfranke.com"
+SHEEP_MAX_ATTEMPTS = 3
+SHEEP_TIMEOUT = 45
+SHEEP_MODELS = {"auto", "scout", "hunter", "sage"}
+
+
+def redact_secret(value: str) -> str:
+    if not value:
+        return value
+    return re.sub(r'shp_[A-Za-z0-9_=-]+', 'shp_[REDACTED]', str(value))
+
+
+class SheepAPIError(Exception):
+    pass
+
 class LLMClient:
     MODELS = {
         "claude": "claude-3-5-sonnet-20241022",
@@ -296,28 +311,49 @@ class LLMClient:
         "gemini": "gemini-2.0-flash-exp",
         "mistral": "mistral-large-latest",
         "deepseek": "deepseek-chat",
-        "sheep": "hunter",
+        "sheep": "auto",
     }
+
     def __init__(self, provider=None, api_key=None, model=None):
         self.provider = provider
         self.api_key = api_key
         self.model = model or self.MODELS.get(provider)
         self.enabled = False
+        self.last_usage = {}
+        self.last_error = None
+
         if not provider or provider == "none" or not AIOHTTP_AVAILABLE:
             return
+
+        if provider == "sheep":
+            self.api_key = api_key or os.environ.get("SHEEP_TOKEN") or os.environ.get("SHEEP_API_TOKEN")
+            self.model = self.model if self.model in SHEEP_MODELS else "auto"
+            if self.api_key:
+                self.enabled = True
+            else:
+                print(f"{WARN} Sheep API token missing. Use --ai-key, SHEEP_TOKEN or SHEEP_API_TOKEN")
+            return
+
         if provider == "ollama":
             try:
-                s = socket.socket(); s.settimeout(1); s.connect(('localhost',11434)); s.close()
+                s = socket.socket()
+                s.settimeout(1)
+                s.connect(("localhost", 11434))
+                s.close()
                 self.enabled = True
-            except:
+            except Exception:
                 print(f"{WARN} Ollama not reachable")
-        elif api_key:
+            return
+
+        if api_key:
             self.enabled = True
         else:
             print(f"{WARN} No API key for {provider}")
 
     async def generate(self, sys_msg: str, usr_msg: str) -> Optional[str]:
-        if not self.enabled: return None
+        if not self.enabled:
+            return None
+
         try:
             if self.provider == "claude":
                 return await self._claude(sys_msg, usr_msg)
@@ -329,7 +365,8 @@ class LLMClient:
                 return await self._sheep(sys_msg, usr_msg)
             return await self._openai_compat(sys_msg, usr_msg)
         except Exception as e:
-            print(f"{WARN} LLM error: {e}")
+            self.last_error = redact_secret(str(e))
+            print(f"{WARN} LLM error: {self.last_error}")
             return None
 
     async def _claude(self, sys_msg, usr_msg):
@@ -368,34 +405,89 @@ class LLMClient:
                 return data.get("response","")
 
     async def _sheep(self, sys_msg, usr_msg):
-        url = "https://sheep.byfranke.com/api/ai/ask"
-        model = self.model or "hunter"
-        if model not in {"auto", "scout", "hunter", "sage"}:
-            model = "hunter"
-        headers = {"X-Sheep-Token": self.api_key, "Content-Type": "application/json"}
-        body = {"question": f"{sys_msg}\n\n{usr_msg}", "model": model}
-        async with aiohttp.ClientSession() as s:
-            async with s.post(url, headers=headers, json=body, timeout=120) as r:
-                try:
-                    data = await r.json()
-                except Exception:
-                    data = {"text": await r.text()}
-                if r.status == 401:
-                    return "Sheep API authentication failed. Check your X-Sheep-Token."
-                if r.status == 402:
-                    return "Sheep API quota exhausted or subscription inactive."
-                if r.status == 403:
-                    return f"Sheep model '{model}' is not available in your plan."
-                if r.status == 429:
-                    retry_after = r.headers.get("Retry-After", "unknown")
-                    return f"Sheep API rate limit exceeded. Retry after: {retry_after} seconds."
-                if isinstance(data, dict):
-                    for key in ("answer", "response", "content", "text", "result", "message"):
-                        value = data.get(key)
-                        if isinstance(value, str) and value.strip():
-                            return value
-                    return json.dumps(data, ensure_ascii=False)
-                return str(data)
+        model = self.model if self.model in SHEEP_MODELS else "auto"
+        payload = {"question": f"{sys_msg}\n\n{usr_msg}", "model": model}
+        headers = {
+            "X-Sheep-Token": self.api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "ultimate-ssrf-framework/4.2-experimental",
+        }
+        timeout = aiohttp.ClientTimeout(total=SHEEP_TIMEOUT)
+
+        for attempt in range(SHEEP_MAX_ATTEMPTS):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(f"{SHEEP_BASE_URL}/api/ai/ask", headers=headers, json=payload) as response:
+                        try:
+                            data = await response.json()
+                        except Exception:
+                            data = {"text": await response.text()}
+
+                        if response.status == 200:
+                            self.last_error = None
+                            self.last_usage = {
+                                "provider": "sheep",
+                                "model_requested": model,
+                                "served_by": data.get("served_by") if isinstance(data, dict) else None,
+                                "tokens_used": data.get("tokens_used") if isinstance(data, dict) else None,
+                                "rate_limit_remaining": response.headers.get("X-RateLimit-Remaining"),
+                            }
+                            if isinstance(data, dict):
+                                for key in ("response", "answer", "content", "text", "result", "message"):
+                                    value = data.get(key)
+                                    if isinstance(value, str) and value.strip():
+                                        return value
+                                return json.dumps(data, ensure_ascii=False)
+                            return str(data)
+
+                        if response.status == 429:
+                            retry_after = response.headers.get("Retry-After", "10")
+                            try:
+                                wait_time = int(retry_after)
+                            except ValueError:
+                                wait_time = 10
+                            if attempt < SHEEP_MAX_ATTEMPTS - 1:
+                                print(f"{WARN} Sheep rate limited. Retrying in {wait_time}s")
+                                await asyncio.sleep(wait_time)
+                                continue
+
+                        if 500 <= response.status < 600:
+                            wait_time = 2 ** attempt
+                            if attempt < SHEEP_MAX_ATTEMPTS - 1:
+                                print(f"{WARN} Sheep temporary error {response.status}. Retrying in {wait_time}s")
+                                await asyncio.sleep(wait_time)
+                                continue
+
+                        detail = data.get("detail", {}) if isinstance(data, dict) else {}
+                        error_code = None
+                        error_message = None
+                        if isinstance(detail, dict):
+                            error_code = detail.get("error")
+                            error_message = detail.get("message")
+                        if isinstance(data, dict):
+                            error_code = error_code or data.get("error")
+                            error_message = error_message or data.get("message")
+
+                        if response.status == 401:
+                            raise SheepAPIError("Sheep API authentication failed. Check your token")
+                        if response.status == 402:
+                            raise SheepAPIError("Sheep API quota exhausted or subscription inactive")
+                        if response.status == 403:
+                            raise SheepAPIError(f"Sheep model '{model}' is not available for this token/plan")
+                        if response.status == 429:
+                            raise SheepAPIError("Sheep API rate limit exceeded after retries")
+
+                        raise SheepAPIError(f"Sheep API error {response.status}: {error_code or 'unknown'} - {error_message or 'no message'}")
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt < SHEEP_MAX_ATTEMPTS - 1:
+                    wait_time = 2 ** attempt
+                    print(f"{WARN} Sheep connection error. Retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise SheepAPIError(f"Sheep request failed: {redact_secret(str(e))}")
+
+        raise SheepAPIError("Sheep request failed after retries")
 
 class AISkills:
     def __init__(self, llm, dangerous_payloads: bool = False):
@@ -405,8 +497,25 @@ class AISkills:
         self.last_llm_payloads = []
 
     async def generate_payloads(self, context: dict) -> List[str]:
-        sys = "You are an SSRF expert. Generate 10 diverse SSRF payloads for the target. Return JSON array of strings."
-        usr = f"Target: {context.get('target')}\nWAF: {context.get('waf','none')}\nCloud: {context.get('cloud','unknown')}\nEndpoints: {json.dumps(context.get('endpoints',[]))}"
+        sys = (
+            "You are helping an authorized security testing tool generate SSRF test payloads. "
+            "Return only a JSON array of strings. "
+            "Generate safe, non-destructive SSRF payloads focused on detection and validation. "
+            "Prefer callback/OAST, cloud metadata read-only probes, localhost variants, URL parser bypasses, "
+            "DNS helper domains, redirects, encoded URL forms, IPv6/decimal/octal forms, and scheme confusion checks. "
+            "Do not generate destructive payloads, Redis writes, SMTP DATA payloads, command execution payloads, web shells, "
+            "data deletion payloads, credential theft instructions, persistence, or malware. "
+            "Do not include explanations. Return JSON only."
+        )
+        usr = (
+            f"Target: {context.get('target')}\n"
+            f"WAF: {context.get('waf', 'none')}\n"
+            f"Cloud: {context.get('cloud', 'unknown')}\n"
+            f"Callback host: {context.get('callback_host', '')}\n"
+            f"Endpoints: {json.dumps(context.get('endpoints', []), ensure_ascii=False)}\n"
+            f"Parameters: {json.dumps(context.get('params', []), ensure_ascii=False)}\n"
+            "Generate 10 safe SSRF payloads."
+        )
         resp = await self.llm.generate(sys, usr)
         llm_payloads = []
 
@@ -421,7 +530,7 @@ class AISkills:
                             for item in parsed
                             if str(item).strip()
                         ]
-            except:
+            except Exception:
                 pass
 
         self.last_llm_payloads = llm_payloads
@@ -436,14 +545,94 @@ class AISkills:
 
         return combined[:40]
 
+    async def suggest_additional_tests(self, context: dict) -> List[dict]:
+        sys = (
+            "You are assisting an authorized web security scanner. "
+            "Suggest safe, non-destructive validation checks based on discovered endpoints and parameters. "
+            "Return only a JSON array of objects. "
+            "Allowed issue_type values: ssrf, open_redirect, cors_misconfig, header_injection, "
+            "path_traversal_readonly, information_disclosure, authz_review. "
+            "Do not suggest destructive tests, brute force, credential attacks, data modification, account takeover steps, "
+            "command execution, web shells, persistence, malware, or exfiltration. "
+            "Each object must contain: issue_type, endpoint, param, reason, safe_test_value. "
+            "Use safe_test_value only for benign validation strings or callback URLs. Return JSON only."
+        )
+        usr = json.dumps(
+            {
+                "target": context.get("target"),
+                "callback_host": context.get("callback_host"),
+                "endpoints": context.get("endpoints", []),
+                "params": context.get("params", []),
+                "waf": context.get("waf"),
+                "cloud": context.get("cloud"),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        resp = await self.llm.generate(sys, usr)
+        if not resp:
+            return []
+
+        try:
+            match = re.search(r'\[.*\]', resp, re.DOTALL)
+            if not match:
+                return []
+            parsed = json.loads(match.group())
+            if not isinstance(parsed, list):
+                return []
+
+            allowed = {
+                "ssrf",
+                "open_redirect",
+                "cors_misconfig",
+                "header_injection",
+                "path_traversal_readonly",
+                "information_disclosure",
+                "authz_review",
+            }
+            suggestions = []
+
+            for item in parsed[:15]:
+                if not isinstance(item, dict):
+                    continue
+
+                issue_type = str(item.get("issue_type", "")).strip().lower()
+                endpoint = str(item.get("endpoint", "")).strip()
+                param = str(item.get("param", "")).strip()
+                reason = str(item.get("reason", "")).strip()
+                safe_test_value = str(item.get("safe_test_value", "")).strip()
+
+                if issue_type not in allowed:
+                    continue
+                if not endpoint.startswith("/"):
+                    continue
+                if not param:
+                    continue
+
+                suggestions.append(
+                    {
+                        "issue_type": issue_type,
+                        "endpoint": endpoint,
+                        "param": param,
+                        "reason": reason,
+                        "safe_test_value": safe_test_value,
+                    }
+                )
+
+            return suggestions
+
+        except Exception:
+            return []
+
     async def triage(self, findings: List[dict]) -> Optional[str]:
         sys = (
-            "You are a senior security analyst reviewing SSRF scan results. "
-            "Separate confirmed vulnerable items from not_confirmed attempts and errors. "
-            "For confirmed issues, mention endpoint, parameter, payload, evidence, severity and recommended next steps. "
+            "You are a senior security analyst reviewing authorized web security scan results. "
+            "Separate confirmed vulnerable items, suspected_other_issue items, manual_review items, not_confirmed attempts and errors. "
+            "For confirmed SSRF issues, mention endpoint, parameter, payload, evidence, severity and recommended next steps. "
+            "For suspected non-SSRF issues, clearly label them as suspected and requiring manual validation. "
             "Never claim a target is safe when the result is only not_confirmed."
         )
-        usr = json.dumps(findings[:30], indent=2, ensure_ascii=False)
+        usr = json.dumps(findings[:40], indent=2, ensure_ascii=False)
         return await self.llm.generate(sys, usr)
 
 class WAFFingerprinter:
@@ -531,6 +720,8 @@ class UltimateSSRFFramework:
 
         self.evidence: List[SSRFEvidence] = []
         self.scan_attempts: List[ScanAttempt] = []
+        self.ai_suggestions = []
+        self.other_issue_attempts = []
         self.endpoints: List[DiscoveredEndpoint] = []
         self.params: Set[str] = set()
         self.callbacks = defaultdict(list)
@@ -832,6 +1023,7 @@ class UltimateSSRFFramework:
                 if s not in (0,404,403):
                     params = set(re.findall(r'[?&]([a-zA-Z_]\w*)=', p))
                     params.update(re.findall(r'name=["\']([^"\']+)["\']', b, re.I))
+                    self.params.update(params)
                     ep = DiscoveredEndpoint(path=p, method="GET", params=params,
                                             accepts_url_param=True, test_response_code=s,
                                             content_type=h.get("content-type",""))
@@ -901,7 +1093,9 @@ class UltimateSSRFFramework:
             "target": self.target,
             "waf": self.waf_info.get("primary", ""),
             "cloud": ",".join(self.cloud),
+            "callback_host": self._callback_host(),
             "endpoints": [e.path for e in self.endpoints[:5]],
+            "params": sorted(list(self.params))[:20],
         }
 
         payloads = await self.ai.generate_payloads(context)
@@ -917,6 +1111,8 @@ class UltimateSSRFFramework:
                         "target": self.target,
                         "provider": self.llm.provider if self.llm else None,
                         "model": self.llm.model if self.llm else None,
+                        "ai_usage": getattr(self.llm, "last_usage", {}) if self.llm else {},
+                        "ai_error": getattr(self.llm, "last_error", None) if self.llm else None,
                         "ai_generated_payloads": ai_payloads,
                         "all_payloads_used": payloads,
                         "tested_payloads": payloads[:10],
@@ -929,6 +1125,9 @@ class UltimateSSRFFramework:
             if self.verbose:
                 print(f"  {AI_ICON} Generated {len(ai_payloads)} AI payloads")
                 print(f"  {AI_ICON} Total payload candidates: {len(payloads)}")
+                usage = getattr(self.llm, "last_usage", {}) if self.llm else {}
+                if usage:
+                    print(f"  {AI_ICON} Sheep served_by={usage.get('served_by')} tokens_used={usage.get('tokens_used')}")
                 print(f"  {OK} AI payloads saved: {payload_log}")
                 if ai_payloads:
                     print(f"  {AI_ICON} AI-generated payloads:")
@@ -940,6 +1139,8 @@ class UltimateSSRFFramework:
             param = list(ep.params)[0] if ep.params else "url"
             for payload in payloads[:10]:
                 await self.test_payload(ep, param, payload, "AI-Generated", "AI Payload")
+
+        await self.run_ai_suggested_tests(context)
 
         if self.scan_attempts:
             summary_data = [
@@ -970,6 +1171,170 @@ class UltimateSSRFFramework:
                 if self.verbose:
                     print(f"  {AI_ICON} AI Triage saved: {triage_file}")
                     print(f"  {AI_ICON} AI Triage:\n    {triage[:300]}...")
+
+    async def run_ai_suggested_tests(self, context):
+        if not self.ai or not self.ai.enabled:
+            return
+
+        suggestions = await self.ai.suggest_additional_tests(context)
+        self.ai_suggestions = suggestions
+
+        if not suggestions:
+            return
+
+        safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+        suggestions_file = self.output_dir / f"ai_suggestions_{safe_target}.json"
+
+        with open(suggestions_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "target": self.target,
+                    "provider": self.llm.provider if self.llm else None,
+                    "model": self.llm.model if self.llm else None,
+                    "suggestions": suggestions,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        if self.verbose:
+            print(f"  {AI_ICON} AI suggested {len(suggestions)} additional safe checks")
+            print(f"  {OK} AI suggestions saved: {suggestions_file}")
+
+        endpoint_map = {endpoint.path: endpoint for endpoint in self.endpoints}
+
+        for suggestion in suggestions[:10]:
+            issue_type = suggestion.get("issue_type")
+            endpoint = suggestion.get("endpoint")
+            param = suggestion.get("param")
+            reason = suggestion.get("reason")
+            safe_test_value = suggestion.get("safe_test_value") or "test"
+
+            ep = endpoint_map.get(endpoint)
+            if not ep:
+                continue
+
+            if issue_type == "ssrf":
+                if not safe_test_value.startswith(("http://", "https://")):
+                    safe_test_value = self.make_callback_url("ai-ssrf")
+
+                vulnerable = await self.test_payload(
+                    ep,
+                    param,
+                    safe_test_value,
+                    "AI-Suggested",
+                    "AI SSRF suggestion",
+                )
+
+                self.other_issue_attempts.append(
+                    {
+                        "issue_type": issue_type,
+                        "endpoint": endpoint,
+                        "param": param,
+                        "payload": safe_test_value,
+                        "reason": reason,
+                        "result": "vulnerable" if vulnerable else "not_confirmed",
+                    }
+                )
+                continue
+
+            result = await self.safe_non_ssrf_check(
+                ep,
+                param,
+                safe_test_value,
+                issue_type,
+                reason,
+            )
+
+            self.other_issue_attempts.append(result)
+
+    async def safe_non_ssrf_check(self, ep, param, value, issue_type, reason):
+        if not isinstance(value, str):
+            value = str(value)
+
+        value = value.strip() or "test"
+
+        if ep.method == "GET":
+            sep = "&" if "?" in ep.path else "?"
+            tested_url = f"{self.base}{ep.path}{sep}{param}={urllib.parse.quote(value)}"
+            status, body, headers = await self.request("GET", tested_url)
+        else:
+            tested_url = f"{self.base}{ep.path}"
+            status, body, headers = await self.request("POST", tested_url, {param: value})
+
+        body_low = (body or "").lower()
+        headers_low = json.dumps(headers or {}).lower()
+        evidence = []
+        result = "not_confirmed"
+        confidence = "low"
+
+        if issue_type == "open_redirect":
+            location = ""
+            if isinstance(headers, dict):
+                location = headers.get("location", "") or headers.get("Location", "")
+            if value in location or value in body:
+                evidence.append("Potential redirect reflection detected")
+                result = "suspected_other_issue"
+                confidence = "medium"
+
+        elif issue_type == "cors_misconfig":
+            acao = ""
+            acac = ""
+            if isinstance(headers, dict):
+                acao = headers.get("access-control-allow-origin", "") or headers.get("Access-Control-Allow-Origin", "")
+                acac = headers.get("access-control-allow-credentials", "") or headers.get("Access-Control-Allow-Credentials", "")
+            if acao == "*" or (acao and acac.lower() == "true"):
+                evidence.append("Potential CORS misconfiguration signal")
+                result = "suspected_other_issue"
+                confidence = "medium"
+
+        elif issue_type == "header_injection":
+            if "x-injected" in headers_low or "x-injected" in body_low:
+                evidence.append("Potential header injection reflection")
+                result = "suspected_other_issue"
+                confidence = "medium"
+
+        elif issue_type == "path_traversal_readonly":
+            if "root:" in body_low or "windows" in body_low or "boot loader" in body_low:
+                evidence.append("Potential read-only path traversal/file disclosure signal")
+                result = "suspected_other_issue"
+                confidence = "medium"
+
+        elif issue_type == "information_disclosure":
+            markers = ["secret", "token", "apikey", "api_key", "password", "private_key", "debug", "stack trace"]
+            found = [marker for marker in markers if marker in body_low]
+            if found:
+                evidence.append(f"Potential information disclosure markers: {', '.join(found[:5])}")
+                result = "suspected_other_issue"
+                confidence = "medium"
+
+        elif issue_type == "authz_review":
+            if status in (200, 201, 202):
+                evidence.append("Authorization review suggested by AI; manual validation required")
+                result = "manual_review"
+                confidence = "low"
+
+        error = headers.get("_error") if isinstance(headers, dict) else None
+        if error:
+            result = "error"
+
+        if self.verbose:
+            print(f"  {DIM}[AI {result.upper()}]{RESET} {issue_type} {ep.path} → {param}")
+
+        return {
+            "issue_type": issue_type,
+            "endpoint": ep.path,
+            "param": param,
+            "tested_url": tested_url,
+            "payload": value,
+            "status": status,
+            "result": result,
+            "confidence": confidence,
+            "reason": reason,
+            "evidence": evidence,
+            "error": error,
+        }
 
     async def phase_websocket(self):
         if self.no_ws: return
@@ -1103,6 +1468,11 @@ class UltimateSSRFFramework:
                 cef += f"dhost={self.target} request={ev.url} endpoint={ev.endpoint} param={ev.param} payload={ev.payload} outOfBand={ev.out_of_band_hit} score={ev.impact_score}"
                 entries.append(cef)
 
+        for item in self.other_issue_attempts:
+            cef = f"CEF:0|SSRFFramework|4.2|AI-Suggested|{item.get('issue_type')}|{item.get('result')}|"
+            cef += f"target={self.target} endpoint={item.get('endpoint')} param={item.get('param')} result={item.get('result')} confidence={item.get('confidence')}"
+            entries.append(cef)
+
         safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
         cef_file = self.output_dir / f"siem_{safe_target}.cef"
         with open(cef_file, "w", encoding="utf-8") as f:
@@ -1137,6 +1507,8 @@ class UltimateSSRFFramework:
             "vulnerable_payloads": vulnerable_attempts,
             "not_confirmed_payloads": not_confirmed_attempts,
             "errors": error_attempts,
+            "ai_suggestions": self.ai_suggestions,
+            "other_issue_attempts": self.other_issue_attempts,
         }
 
         safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
@@ -1180,6 +1552,19 @@ class UltimateSSRFFramework:
                 G.add_node(payload_id, type="payload", value=attempt.payload, severity=attempt.severity)
                 G.add_edge(attempt_id, payload_id, relation="confirmed-payload")
 
+        for index, item in enumerate(self.other_issue_attempts[:100], 1):
+            issue_id = f"ai-issue-{index}"
+            G.add_node(
+                issue_id,
+                type="ai_suggested_check",
+                issue_type=str(item.get("issue_type")),
+                endpoint=str(item.get("endpoint")),
+                param=str(item.get("param")),
+                result=str(item.get("result")),
+                confidence=str(item.get("confidence")),
+            )
+            G.add_edge(self.target, issue_id, relation="ai-suggested-check")
+
         safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
         graph_file = self.output_dir / f"attack_map_{safe_target}.gexf"
         nx.write_gexf(G, graph_file)
@@ -1220,7 +1605,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{background:#0f3460;p
 td{padding:8px;border-bottom:1px solid #333;vertical-align:top;word-break:break-word}
 .badge{padding:4px 8px;border-radius:4px;font-size:12px;display:inline-block}
 .badge-critical{background:#ff4444;color:#fff}.badge-high{background:#ff8c00;color:#fff}.badge-medium{background:#ffd700;color:#000}.badge-info{background:#444;color:#fff}
-.badge-vulnerable{background:#ff4444;color:#fff}.badge-not_confirmed{background:#555;color:#fff}.badge-error{background:#8b0000;color:#fff}
+.badge-vulnerable{background:#ff4444;color:#fff}.badge-not_confirmed{background:#555;color:#fff}.badge-error{background:#8b0000;color:#fff}.badge-suspected_other_issue{background:#d97706;color:#fff}.badge-manual_review{background:#2563eb;color:#fff}
 code{color:#9cdcfe}
 </style>
 </head>
@@ -1234,6 +1619,7 @@ code{color:#9cdcfe}
 <div class="card"><h2>Summary</h2><p>Cloud: {{cloud}}</p><p>Endpoints: {{endpoints}}</p><p>Findings: {{findings}} raw / {{unique}} unique</p><p>Callbacks: {{callbacks}}</p><p>Total Attempts: {{attempts|length}}</p><p>Not Confirmed: {{not_confirmed|length}}</p><p>Errors: {{errors|length}}</p></div>
 <div class="card"><h2>Confirmed Findings</h2><table><tr><th>Endpoint</th><th>Parameter</th><th>Severity</th><th>Callbacks</th></tr>{% for v in vulns %}<tr><td>{{v.endpoint}}</td><td>{{v.param}}</td><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.oob}}</td></tr>{% endfor %}</table></div>
 <div class="card"><h2>Payload Attempts</h2><table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns | join(", ") }}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>AI Suggested Safe Checks</h2><table><tr><th>Issue Type</th><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Evidence / Reason</th></tr>{% for item in other_issue_attempts %}<tr><td>{{item.issue_type}}</td><td><span class="badge badge-{{item.result}}">{{item.result}}</span></td><td>{{item.status}}</td><td>{{item.endpoint}}</td><td>{{item.param}}</td><td>{% if item.evidence %}{{item.evidence | join(", ") }}{% else %}{{item.reason}}{% endif %}</td></tr>{% endfor %}</table></div>
 </body>
 </html>
         """).render(
@@ -1249,6 +1635,7 @@ code{color:#9cdcfe}
             vulnerable=vulnerable,
             errors=errors,
             not_confirmed=not_confirmed,
+            other_issue_attempts=self.other_issue_attempts,
         )
 
         with open(self.html_file, "w", encoding="utf-8") as f:
@@ -1272,6 +1659,8 @@ code{color:#9cdcfe}
             "evidence": [asdict(ev) for ev in self.evidence],
             "callbacks": dict(self.callbacks),
             "internal_ips": list(self.internal_ips),
+            "ai_suggestions": self.ai_suggestions,
+            "other_issue_attempts": self.other_issue_attempts,
         }
         with open(self.json_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
