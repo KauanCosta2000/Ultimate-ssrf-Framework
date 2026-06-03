@@ -153,6 +153,23 @@ class DiscoveredEndpoint:
     path: str; method: str; params: Set[str]
     accepts_url_param: bool; test_response_code: int; content_type: str
 
+@dataclass
+class ScanAttempt:
+    phase: str
+    technique: str
+    target: str
+    tested_url: str
+    endpoint: str
+    param: str
+    payload: str
+    status: int
+    vulnerable: bool = False
+    result: str = "not_confirmed"
+    severity: str = "info"
+    confidence: str = "low"
+    matched_patterns: Optional[List[str]] = None
+    error: Optional[str] = None
+
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Ultimate SSRF Framework v4.2-experimental",
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -385,30 +402,48 @@ class AISkills:
         self.llm = llm
         self.enabled = llm and llm.enabled
         self.dangerous = dangerous_payloads
+        self.last_llm_payloads = []
 
     async def generate_payloads(self, context: dict) -> List[str]:
         sys = "You are an SSRF expert. Generate 10 diverse SSRF payloads for the target. Return JSON array of strings."
         usr = f"Target: {context.get('target')}\nWAF: {context.get('waf','none')}\nCloud: {context.get('cloud','unknown')}\nEndpoints: {json.dumps(context.get('endpoints',[]))}"
         resp = await self.llm.generate(sys, usr)
         llm_payloads = []
+
         if resp:
             try:
                 match = re.search(r'\[.*\]', resp, re.DOTALL)
                 if match:
-                    llm_payloads = json.loads(match.group())
+                    parsed = json.loads(match.group())
+                    if isinstance(parsed, list):
+                        llm_payloads = [
+                            str(item).strip()
+                            for item in parsed
+                            if str(item).strip()
+                        ]
             except:
                 pass
+
+        self.last_llm_payloads = llm_payloads
         combined = DEFAULT_SSRF_PAYLOADS.copy()
+
         if self.dangerous:
             combined.extend(DANGEROUS_SSRF_PAYLOADS)
-        for pl in llm_payloads:
-            if pl not in combined:
-                combined.append(pl)
+
+        for payload in llm_payloads:
+            if payload not in combined:
+                combined.append(payload)
+
         return combined[:40]
 
     async def triage(self, findings: List[dict]) -> Optional[str]:
-        sys = "You are a senior security analyst. Provide a concise triage summary: most critical finding, overall risk, recommended next steps."
-        usr = json.dumps(findings[:5], indent=2)
+        sys = (
+            "You are a senior security analyst reviewing SSRF scan results. "
+            "Separate confirmed vulnerable items from not_confirmed attempts and errors. "
+            "For confirmed issues, mention endpoint, parameter, payload, evidence, severity and recommended next steps. "
+            "Never claim a target is safe when the result is only not_confirmed."
+        )
+        usr = json.dumps(findings[:30], indent=2, ensure_ascii=False)
         return await self.llm.generate(sys, usr)
 
 class WAFFingerprinter:
@@ -495,6 +530,7 @@ class UltimateSSRFFramework:
                 self.ai = AISkills(self.llm, dangerous_payloads=args.dangerous_payloads)
 
         self.evidence: List[SSRFEvidence] = []
+        self.scan_attempts: List[ScanAttempt] = []
         self.endpoints: List[DiscoveredEndpoint] = []
         self.params: Set[str] = set()
         self.callbacks = defaultdict(list)
@@ -561,6 +597,23 @@ class UltimateSSRFFramework:
                 )
                 ev.impact_score = self._impact(ev)
                 self.evidence.append(ev)
+                self.scan_attempts.append(
+                    ScanAttempt(
+                        phase=ev.phase,
+                        technique=ev.technique,
+                        target=self.target,
+                        tested_url=url,
+                        endpoint=ev.endpoint,
+                        param=ev.param,
+                        payload=ev.payload,
+                        status=200,
+                        vulnerable=True,
+                        result="vulnerable",
+                        severity=ev.severity,
+                        confidence="high",
+                        matched_patterns=ev.matched_patterns,
+                    )
+                )
                 self.callbacks[req_host].append({
                     "time": datetime.now().isoformat(),
                     "method": req.method,
@@ -600,8 +653,8 @@ class UltimateSSRFFramework:
                     hdrs = result.get("headers", {})
                 await asyncio.sleep(self.delay)
                 return status, body, hdrs
-            except:
-                return 0, "", {}
+            except Exception as e:
+                return 0, "", {"_error": str(e)}
 
     async def check_evidence(self, phase, technique, url, endpoint, param, payload, status, body, headers):
         patterns = [
@@ -658,18 +711,82 @@ class UltimateSSRFFramework:
             sep = "&" if "?" in ep.path else "?"
             url = f"{self.base}{ep.path}{sep}{param}={urllib.parse.quote(payload)}"
             self._register_callback_context(payload, ep.path, param, phase, technique)
-            s, b, h = await self.request("GET", url)
+            status, body, headers = await self.request("GET", url)
         else:
             url = f"{self.base}{ep.path}"
             self._register_callback_context(payload, ep.path, param, phase, technique)
-            s, b, h = await self.request("POST", url, {param: payload})
+            status, body, headers = await self.request("POST", url, {param: payload})
 
-        findings = await self.check_evidence(phase, technique, url, ep.path, param, payload, s, b, h)
-        if findings and self.verbose:
-            for f in findings:
-                col = {"critical": RED, "high": YELLOW, "medium": MAGENTA}.get(f.severity, BLUE)
-                print(f"  {col}[{f.severity.upper()}]{RESET} {ep.path} → {param} (impact {f.impact_score:.1f})")
-        return bool(findings)
+        findings = await self.check_evidence(
+            phase,
+            technique,
+            url,
+            ep.path,
+            param,
+            payload,
+            status,
+            body,
+            headers,
+        )
+
+        error = headers.get("_error") if isinstance(headers, dict) else None
+        vulnerable = bool(findings)
+
+        if vulnerable:
+            best = findings[0]
+            result = "vulnerable"
+            severity = best.severity
+            confidence = "high" if best.out_of_band_hit else "medium"
+            matched_patterns = best.matched_patterns
+        elif error:
+            result = "error"
+            severity = "info"
+            confidence = "low"
+            matched_patterns = []
+        else:
+            result = "not_confirmed"
+            severity = "info"
+            confidence = "low"
+            matched_patterns = []
+
+        self.scan_attempts.append(
+            ScanAttempt(
+                phase=phase,
+                technique=technique,
+                target=self.target,
+                tested_url=url,
+                endpoint=ep.path,
+                param=param,
+                payload=payload,
+                status=status,
+                vulnerable=vulnerable,
+                result=result,
+                severity=severity,
+                confidence=confidence,
+                matched_patterns=matched_patterns,
+                error=error,
+            )
+        )
+
+        if self.verbose:
+            if vulnerable:
+                for finding in findings:
+                    color = {
+                        "critical": RED,
+                        "high": YELLOW,
+                        "medium": MAGENTA,
+                    }.get(finding.severity, BLUE)
+                    print(
+                        f"  {color}[{finding.severity.upper()}]{RESET} "
+                        f"{ep.path} → {param} payload={payload} "
+                        f"(impact {finding.impact_score:.1f})"
+                    )
+            elif error:
+                print(f"  {DIM}[ERROR]{RESET} {ep.path} → {param} payload={payload} error={error}")
+            else:
+                print(f"  {DIM}[NOT CONFIRMED]{RESET} {ep.path} → {param} payload={payload}")
+
+        return vulnerable
 
     async def discover(self):
         if self.verbose: print(f"\n{CYAN}[DISCOVERY]{RESET} Crawling and extracting endpoints...")
@@ -774,21 +891,85 @@ class UltimateSSRFFramework:
                 await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
     async def run_ai_phases(self):
-        if not self.ai or not self.ai.enabled: return
-        if self.verbose: print(f"\n{PURPLE}[AI PHASES]{RESET} AI-powered analysis...")
-        context = {"target":self.target,"waf":self.waf_info.get("primary",""),
-                   "cloud":",".join(self.cloud),"endpoints":[e.path for e in self.endpoints[:5]]}
+        if not self.ai or not self.ai.enabled:
+            return
+
+        if self.verbose:
+            print(f"\n{PURPLE}[AI PHASES]{RESET} AI-powered analysis...")
+
+        context = {
+            "target": self.target,
+            "waf": self.waf_info.get("primary", ""),
+            "cloud": ",".join(self.cloud),
+            "endpoints": [e.path for e in self.endpoints[:5]],
+        }
+
         payloads = await self.ai.generate_payloads(context)
-        if payloads and self.verbose: print(f"  {AI_ICON} Generated {len(payloads)} custom payloads")
+        ai_payloads = getattr(self.ai, "last_llm_payloads", [])
+
+        if payloads:
+            safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+            payload_log = self.output_dir / f"ai_payloads_{safe_target}.json"
+
+            with open(payload_log, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "target": self.target,
+                        "provider": self.llm.provider if self.llm else None,
+                        "model": self.llm.model if self.llm else None,
+                        "ai_generated_payloads": ai_payloads,
+                        "all_payloads_used": payloads,
+                        "tested_payloads": payloads[:10],
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+
+            if self.verbose:
+                print(f"  {AI_ICON} Generated {len(ai_payloads)} AI payloads")
+                print(f"  {AI_ICON} Total payload candidates: {len(payloads)}")
+                print(f"  {OK} AI payloads saved: {payload_log}")
+                if ai_payloads:
+                    print(f"  {AI_ICON} AI-generated payloads:")
+                    for i, payload in enumerate(ai_payloads, 1):
+                        print(f"    [{i:02d}] {payload}")
+
         if self.endpoints and payloads:
             ep = self.endpoints[0]
             param = list(ep.params)[0] if ep.params else "url"
-            for pl in payloads[:10]:
-                await self.test_payload(ep, param, pl, "AI-Generated", "AI Payload")
-        if self.evidence:
-            summary_data = [{"endpoint":ev.endpoint,"param":ev.param,"severity":ev.severity,"patterns":ev.matched_patterns[:2]} for ev in self.evidence[:10]]
+            for payload in payloads[:10]:
+                await self.test_payload(ep, param, payload, "AI-Generated", "AI Payload")
+
+        if self.scan_attempts:
+            summary_data = [
+                {
+                    "target": attempt.target,
+                    "endpoint": attempt.endpoint,
+                    "param": attempt.param,
+                    "payload": attempt.payload,
+                    "tested_url": attempt.tested_url,
+                    "status": attempt.status,
+                    "result": attempt.result,
+                    "vulnerable": attempt.vulnerable,
+                    "severity": attempt.severity,
+                    "confidence": attempt.confidence,
+                    "matched_patterns": attempt.matched_patterns or [],
+                    "error": attempt.error,
+                }
+                for attempt in self.scan_attempts[:30]
+            ]
+
             triage = await self.ai.triage(summary_data)
-            if triage and self.verbose: print(f"  {AI_ICON} AI Triage:\n    {triage[:200]}...")
+            if triage:
+                safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+                triage_file = self.output_dir / f"ai_triage_{safe_target}.md"
+                with open(triage_file, "w", encoding="utf-8") as f:
+                    f.write(triage)
+
+                if self.verbose:
+                    print(f"  {AI_ICON} AI Triage saved: {triage_file}")
+                    print(f"  {AI_ICON} AI Triage:\n    {triage[:300]}...")
 
     async def phase_websocket(self):
         if self.no_ws: return
@@ -884,99 +1065,229 @@ class UltimateSSRFFramework:
                 })
         if templates:
             if YAML_AVAILABLE:
-                with open(self.output_dir / f"nuclei_{self.target}.yaml", "w") as f:
+                with open(self.output_dir / f"nuclei_{self.target}.yaml", "w", encoding="utf-8") as f:
                     yaml.dump(templates, f, allow_unicode=True)
                 print(f"  {OK} Nuclei YAML exported")
             else:
-                with open(self.output_dir / f"nuclei_{self.target}.json", "w") as f:
+                with open(self.output_dir / f"nuclei_{self.target}.json", "w", encoding="utf-8") as f:
                     json.dump(templates, f, indent=2)
                 print(f"  {WARN} PyYAML missing, exported JSON")
 
     def export_siem_cef(self):
-        if not self.do_export_siem: return
+        if not self.do_export_siem:
+            return
+
         entries = []
-        for ev in self.evidence:
-            cef = f"CEF:0|SSRFFramework|4.2|{ev.severity}|SSRF|{ev.severity}|"
-            cef += f"endpoint={ev.endpoint} param={ev.param} outOfBand={ev.out_of_band_hit} score={ev.impact_score}"
+        source = self.scan_attempts or []
+
+        for attempt in source:
+            severity = attempt.severity or "info"
+            signature = "SSRF confirmed" if attempt.vulnerable else "SSRF not confirmed"
+            if attempt.result == "error":
+                signature = "SSRF scan error"
+            cef = f"CEF:0|SSRFFramework|UltimateSSRF|4.2|SSRF_ATTEMPT|{signature}|{severity}|"
+            cef += (
+                f"dhost={self.target} request={attempt.tested_url} "
+                f"endpoint={attempt.endpoint} param={attempt.param} "
+                f"payload={attempt.payload} result={attempt.result} "
+                f"vulnerable={attempt.vulnerable} status={attempt.status} "
+                f"confidence={attempt.confidence}"
+            )
+            if attempt.error:
+                cef += f" error={attempt.error}"
             entries.append(cef)
-        if entries:
-            with open(self.output_dir / f"siem_{self.target}.cef", "w") as f:
-                f.write("\n".join(entries))
-            if self.verbose: print(f"  {OK} CEF exported")
+
+        if not entries and self.evidence:
+            for ev in self.evidence:
+                cef = f"CEF:0|SSRFFramework|UltimateSSRF|4.2|SSRF_FINDING|SSRF|{ev.severity}|"
+                cef += f"dhost={self.target} request={ev.url} endpoint={ev.endpoint} param={ev.param} payload={ev.payload} outOfBand={ev.out_of_band_hit} score={ev.impact_score}"
+                entries.append(cef)
+
+        safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+        cef_file = self.output_dir / f"siem_{safe_target}.cef"
+        with open(cef_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(entries))
+        if self.verbose:
+            print(f"  {OK} CEF exported: {cef_file}")
 
     def export_json_api(self):
-        if not self.do_export_json_api: return
+        if not self.do_export_json_api:
+            return
+
+        attempts = [asdict(attempt) for attempt in self.scan_attempts]
+        vulnerable_attempts = [attempt for attempt in attempts if attempt.get("vulnerable")]
+        error_attempts = [attempt for attempt in attempts if attempt.get("result") == "error"]
+        not_confirmed_attempts = [attempt for attempt in attempts if attempt.get("result") == "not_confirmed"]
+
         data = {
             "target": self.target,
             "timestamp": datetime.now().isoformat(),
             "cloud": self.cloud,
+            "is_vulnerable_to_ssrf": bool(vulnerable_attempts),
+            "status": "vulnerable" if vulnerable_attempts else "not_confirmed",
             "total_findings": len(self.evidence),
             "unique_findings": len(self._dedup()),
-            "callbacks": len(self.callbacks)
+            "callbacks": len(self.callbacks),
+            "attempt_summary": {
+                "total": len(attempts),
+                "vulnerable": len(vulnerable_attempts),
+                "not_confirmed": len(not_confirmed_attempts),
+                "errors": len(error_attempts),
+            },
+            "vulnerable_payloads": vulnerable_attempts,
+            "not_confirmed_payloads": not_confirmed_attempts,
+            "errors": error_attempts,
         }
-        with open(self.output_dir / f"api_report_{self.target}.json", "w") as f:
-            json.dump(data, f, indent=2, default=str)
-        if self.verbose: print(f"  {OK} JSON API exported")
+
+        safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+        report_file = self.output_dir / f"api_report_{safe_target}.json"
+        with open(report_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        if self.verbose:
+            print(f"  {OK} JSON API exported: {report_file}")
 
     def generate_attack_map(self):
-        if not self.do_attack_map: return
-        if not NETWORKX_AVAILABLE:
-            if self.verbose: print(f"{WARN} networkx missing")
+        if not self.do_attack_map:
             return
+        if not NETWORKX_AVAILABLE:
+            if self.verbose:
+                print(f"{WARN} networkx missing")
+            return
+
         G = nx.Graph()
-        G.add_node(self.target, type="target")
-        for ip in self.internal_ips:
+        G.add_node(self.target, type="target", status="vulnerable" if self.evidence else "not_confirmed")
+
+        for ip in sorted(self.internal_ips):
             G.add_node(ip, type="internal")
-            G.add_edge(self.target, ip)
-        nx.write_gexf(G, self.output_dir / f"attack_map_{self.target}.gexf")
-        if self.verbose: print(f"  {OK} Attack map exported")
+            G.add_edge(self.target, ip, relation="internal-reference")
+
+        for index, attempt in enumerate(self.scan_attempts[:200], 1):
+            attempt_id = f"attempt-{index}"
+            G.add_node(
+                attempt_id,
+                type="attempt",
+                endpoint=attempt.endpoint,
+                param=attempt.param,
+                payload=attempt.payload,
+                result=attempt.result,
+                vulnerable=str(attempt.vulnerable),
+                status=str(attempt.status),
+            )
+            G.add_edge(self.target, attempt_id, relation="tested")
+
+            if attempt.vulnerable:
+                payload_id = f"payload-{index}"
+                G.add_node(payload_id, type="payload", value=attempt.payload, severity=attempt.severity)
+                G.add_edge(attempt_id, payload_id, relation="confirmed-payload")
+
+        safe_target = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
+        graph_file = self.output_dir / f"attack_map_{safe_target}.gexf"
+        nx.write_gexf(G, graph_file)
+        if self.verbose:
+            print(f"  {OK} Attack map exported: {graph_file}")
 
     async def generate_html(self):
-        if not JINJA2_AVAILABLE: return
+        if not JINJA2_AVAILABLE:
+            return
+
         deduped = self._dedup()
-        vulns = [{"endpoint": ep or "unknown", "param": p or "callback", "severity": info["max_sev"], "oob": info["oob"]}
-                 for (ep, p), info in deduped.items()]
+        vulns = [
+            {
+                "endpoint": ep or "unknown",
+                "param": param or "callback",
+                "severity": info["max_sev"],
+                "oob": info["oob"],
+            }
+            for (ep, param), info in deduped.items()
+        ]
+
+        attempts = [asdict(attempt) for attempt in self.scan_attempts[:300]]
+        vulnerable = any(attempt.get("vulnerable") for attempt in attempts)
+        errors = [attempt for attempt in attempts if attempt.get("result") == "error"]
+        not_confirmed = [attempt for attempt in attempts if attempt.get("result") == "not_confirmed"]
+
         html = Template("""
-<!DOCTYPE html><html><head><title>SSRF Report - {{target}}</title>
-<style>body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}
+<!DOCTYPE html>
+<html>
+<head>
+<title>SSRF Report - {{target}}</title>
+<style>
+body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}
 .header{background:linear-gradient(135deg,#667eea,#764ba2);padding:30px;border-radius:10px;margin-bottom:20px}
 .card{background:#16213e;padding:20px;border-radius:10px;margin:10px 0}
-.critical{color:#ff4444}.high{color:#ff8c00}.medium{color:#ffd700}
-table{width:100%;border-collapse:collapse}th{background:#0f3460;padding:10px;text-align:left}
-td{padding:8px;border-bottom:1px solid #333}
-.badge{padding:4px 8px;border-radius:4px;font-size:12px}
-.badge-critical{background:#ff4444}.badge-high{background:#ff8c00}.badge-medium{background:#ffd700}</style></head>
-<body><div class="header"><h1>SSRF Scan Report</h1><p>Target: <strong>{{target}}</strong></p><p>Date: {{date}}</p></div>
-<div class="card"><h2>Summary</h2><p>Cloud: {{cloud}}</p><p>Endpoints: {{endpoints}}</p><p>Findings: {{findings}} raw / {{unique}} unique</p><p>Callbacks: {{callbacks}}</p></div>
-<div class="card"><h2>Vulnerabilities</h2><table><tr><th>Endpoint</th><th>Parameter</th><th>Severity</th><th>Callbacks</th></tr>
-{% for v in vulns %}<tr><td>{{v.endpoint}}</td><td>{{v.param}}</td><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.oob}}</td></tr>{% endfor %}</table></div></body></html>
-        """).render(target=self.target, date=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    cloud=", ".join(self.cloud) if self.cloud else "Unknown",
-                    endpoints=len(self.endpoints), findings=len(self.evidence),
-                    unique=len(deduped), callbacks=len(self.callbacks), vulns=vulns)
-        with open(self.html_file,"w") as f:
+.critical{color:#ff4444}.high{color:#ff8c00}.medium{color:#ffd700}.info{color:#8ab4f8}
+table{width:100%;border-collapse:collapse;font-size:13px}th{background:#0f3460;padding:10px;text-align:left}
+td{padding:8px;border-bottom:1px solid #333;vertical-align:top;word-break:break-word}
+.badge{padding:4px 8px;border-radius:4px;font-size:12px;display:inline-block}
+.badge-critical{background:#ff4444;color:#fff}.badge-high{background:#ff8c00;color:#fff}.badge-medium{background:#ffd700;color:#000}.badge-info{background:#444;color:#fff}
+.badge-vulnerable{background:#ff4444;color:#fff}.badge-not_confirmed{background:#555;color:#fff}.badge-error{background:#8b0000;color:#fff}
+code{color:#9cdcfe}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>SSRF Scan Report</h1>
+<p>Target: <strong>{{target}}</strong></p>
+<p>Date: {{date}}</p>
+<p>Status: {% if vulnerable %}<span class="badge badge-vulnerable">VULNERABLE / CONFIRMED SIGNAL</span>{% else %}<span class="badge badge-not_confirmed">NOT CONFIRMED</span>{% endif %}</p>
+</div>
+<div class="card"><h2>Summary</h2><p>Cloud: {{cloud}}</p><p>Endpoints: {{endpoints}}</p><p>Findings: {{findings}} raw / {{unique}} unique</p><p>Callbacks: {{callbacks}}</p><p>Total Attempts: {{attempts|length}}</p><p>Not Confirmed: {{not_confirmed|length}}</p><p>Errors: {{errors|length}}</p></div>
+<div class="card"><h2>Confirmed Findings</h2><table><tr><th>Endpoint</th><th>Parameter</th><th>Severity</th><th>Callbacks</th></tr>{% for v in vulns %}<tr><td>{{v.endpoint}}</td><td>{{v.param}}</td><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.oob}}</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>Payload Attempts</h2><table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns | join(", ") }}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td></tr>{% endfor %}</table></div>
+</body>
+</html>
+        """).render(
+            target=self.target,
+            date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            cloud=", ".join(self.cloud) if self.cloud else "Unknown",
+            endpoints=len(self.endpoints),
+            findings=len(self.evidence),
+            unique=len(deduped),
+            callbacks=len(self.callbacks),
+            vulns=vulns,
+            attempts=attempts,
+            vulnerable=vulnerable,
+            errors=errors,
+            not_confirmed=not_confirmed,
+        )
+
+        with open(self.html_file, "w", encoding="utf-8") as f:
             f.write(html)
-        if self.verbose: print(f"  {OK} HTML report: {self.html_file}")
+        if self.verbose:
+            print(f"  {OK} HTML report: {self.html_file}")
 
     async def save_json(self):
+        vulnerable = any(attempt.vulnerable for attempt in self.scan_attempts)
         data = {
-            "target": self.target, "time": datetime.now().isoformat(),
+            "target": self.target,
+            "time": datetime.now().isoformat(),
             "cloud": self.cloud,
-            "endpoints": [{"path":e.path,"method":e.method,"params":list(e.params)} for e in self.endpoints],
+            "is_vulnerable_to_ssrf": vulnerable,
+            "status": "vulnerable" if vulnerable else "not_confirmed",
+            "endpoints": [
+                {"path": e.path, "method": e.method, "params": list(e.params)}
+                for e in self.endpoints
+            ],
+            "attempts": [asdict(attempt) for attempt in self.scan_attempts],
             "evidence": [asdict(ev) for ev in self.evidence],
             "callbacks": dict(self.callbacks),
-            "internal_ips": list(self.internal_ips)
+            "internal_ips": list(self.internal_ips),
         }
-        with open(self.json_file,"w") as f:
+        with open(self.json_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
     def print_summary(self, report_generated=True):
         deduped = self._dedup()
+        vulnerable = any(attempt.vulnerable for attempt in self.scan_attempts) or bool(self.evidence)
+        errors = sum(1 for attempt in self.scan_attempts if attempt.result == "error")
+        not_confirmed = sum(1 for attempt in self.scan_attempts if attempt.result == "not_confirmed")
         print(f"\n{BOLD}{GREEN}{'='*50}{RESET}")
         print(f"{BOLD}{GREEN}  SCAN COMPLETE - {self.target}{RESET}")
         print(f"{BOLD}{GREEN}{'='*50}{RESET}")
+        print(f"  Status: {'vulnerable' if vulnerable else 'not_confirmed'}")
         print(f"  Cloud: {', '.join(self.cloud) if self.cloud else 'Unknown'}")
         print(f"  Endpoints: {len(self.endpoints)}")
+        print(f"  Attempts: {len(self.scan_attempts)} total / {not_confirmed} not confirmed / {errors} errors")
         print(f"  Findings: {len(self.evidence)} raw / {len(deduped)} unique")
         print(f"  Callbacks: {len(self.callbacks)}")
         for (ep, param), info in list(deduped.items())[:10]:
@@ -987,7 +1298,7 @@ td{padding:8px;border-bottom:1px solid #333}
             print(f"\n  {DIM}Report: {self.html_file}{RESET}")
             print(f"  {DIM}Results: {self.json_file}{RESET}")
         else:
-            print(f"\n  {DIM}No report generated because no findings were detected.{RESET}")
+            print(f"\n  {DIM}No report generated.{RESET}")
 
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}")
@@ -1016,11 +1327,8 @@ td{padding:8px;border-bottom:1px solid #333}
             await self.phase_grpc()
             await self.phase_k8s()
             await self.phase_serverless()
-            if not self.evidence:
-                if self.verbose:
-                    print(f"\n{OK} No SSRF findings detected. Skipping report generation.")
-                self.print_summary(report_generated=False)
-                return
+            if not self.evidence and self.verbose:
+                print(f"\n{OK} No confirmed SSRF findings detected. Generating not_confirmed report.")
             self.export_nuclei()
             self.export_siem_cef()
             self.export_json_api()
