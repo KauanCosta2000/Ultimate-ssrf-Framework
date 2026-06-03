@@ -1,14 +1,14 @@
-# Ultimate SSRF Framework v4.2-experimental
+# Ultimate SSRF Framework v5.0-experimental
 
 <div align="center">
 
-![Ultimate SSRF Framework Demo](docs/demo.gif)
+<img src="docs/SSRF%20FRAMEWORK.png" alt="Ultimate SSRF Framework Banner" width="100%">
 
-<br>
+<br><br>
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Version](https://img.shields.io/badge/Version-v4.2--experimental-orange.svg)
+![Version](https://img.shields.io/badge/Version-v5.0--experimental-orange.svg)
 ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 ![CI](https://github.com/KauanCosta2000/Ultimate-ssrf-Framework/actions/workflows/python-ci.yml/badge.svg)
 
