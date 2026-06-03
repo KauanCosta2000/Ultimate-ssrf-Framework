@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ssrf_arsenal import (
+    ScanAttempt,
     SSRFEvidence,
     TargetManager,
     UltimateSSRFFramework,
@@ -30,6 +31,10 @@ def args_for_tests(tmp_path=None, **changes):
         "no_grpc": True,
         "no_k8s": True,
         "no_serverless": True,
+        "no_graphql": True,
+        "no_api_schema": True,
+        "no_mesh": True,
+        "no_bot_evasion": True,
         "no_ai": True,
         "dangerous_payloads": False,
         "export_nuclei": False,
@@ -40,6 +45,7 @@ def args_for_tests(tmp_path=None, **changes):
         "ai_provider": None,
         "ai_key": None,
         "ai_model": None,
+        "param": None,
     }
 
     args.update(changes)
@@ -54,8 +60,16 @@ def test_clean_target_strips_scheme_path_and_query():
     assert TargetManager._clean("https://example.com/path?id=1") == "example.com"
 
 
+def test_clean_target_handles_http_scheme():
+    assert TargetManager._clean("http://api.example.com/test") == "api.example.com"
+
+
 def test_clean_target_handles_spaces():
-    assert TargetManager._clean("  http://api.example.com/test  ") == "api.example.com"
+    assert TargetManager._clean("  https://api.example.com/test  ") == "api.example.com"
+
+
+def test_clean_target_plain_domain():
+    assert TargetManager._clean("example.com") == "example.com"
 
 
 def test_clean_target_returns_none_for_empty_value():
@@ -88,6 +102,38 @@ def test_argparse_accepts_dangerous_payload_flag():
     ])
 
     assert args.dangerous_payloads is True
+
+
+def test_argparse_accepts_param_for_single_target():
+    parser = setup_argparse()
+
+    args = parser.parse_args([
+        "--target",
+        "example.com",
+        "--param",
+        "redirect_url",
+    ])
+
+    assert args.target == "example.com"
+    assert args.param == "redirect_url"
+
+
+def test_argparse_accepts_new_v5_disable_flags():
+    parser = setup_argparse()
+
+    args = parser.parse_args([
+        "--target",
+        "example.com",
+        "--no-graphql",
+        "--no-api-schema",
+        "--no-mesh",
+        "--no-bot-evasion",
+    ])
+
+    assert args.no_graphql is True
+    assert args.no_api_schema is True
+    assert args.no_mesh is True
+    assert args.no_bot_evasion is True
 
 
 def test_argparse_accepts_sheep_ai_provider():
@@ -123,6 +169,47 @@ def test_argparse_accepts_sheep_ai_models_as_plain_value():
 
     assert args.ai_provider == "sheep"
     assert args.ai_model == "auto"
+
+
+def test_framework_uses_user_param_when_provided(tmp_path):
+    framework = new_framework(tmp_path, param="redirect_url")
+
+    class Endpoint:
+        params = {"url", "next"}
+
+    assert framework._params_for_endpoint(Endpoint()) == ["redirect_url"]
+
+
+def test_framework_uses_discovered_params_when_no_user_param(tmp_path):
+    framework = new_framework(tmp_path)
+
+    class Endpoint:
+        params = {"url", "next"}
+
+    params = framework._params_for_endpoint(Endpoint())
+
+    assert "url" in params
+    assert "next" in params
+
+
+def test_framework_uses_fallback_param_when_no_discovered_params(tmp_path):
+    framework = new_framework(tmp_path)
+
+    class Endpoint:
+        params = set()
+
+    params = framework._params_for_endpoint(Endpoint(), fallback=["redirect", "uri"])
+
+    assert params == ["redirect", "uri"]
+
+
+def test_framework_defaults_to_url_when_no_params_or_fallback(tmp_path):
+    framework = new_framework(tmp_path)
+
+    class Endpoint:
+        params = set()
+
+    assert framework._params_for_endpoint(Endpoint()) == ["url"]
 
 
 def test_waf_fingerprint_detects_cloudflare():
@@ -251,11 +338,43 @@ def test_dedup_keeps_worst_severity_and_oob_count(tmp_path):
     assert grouped[("/api", "url")]["oob"] == 1
 
 
-def test_json_api_export_writes_a_small_summary(tmp_path):
+def test_scan_attempt_dataclass_tracks_not_confirmed_attempt():
+    attempt = ScanAttempt(
+        phase="Basic",
+        technique="param url",
+        target="example.com",
+        tested_url="https://example.com/?url=http%3A%2F%2Ftest.oastify.com",
+        endpoint="/",
+        param="url",
+        payload="http://test.oastify.com",
+        status=200,
+    )
+
+    assert attempt.vulnerable is False
+    assert attempt.result == "not_confirmed"
+    assert attempt.severity == "info"
+    assert attempt.confidence == "low"
+
+
+def test_json_api_export_writes_v5_summary(tmp_path):
     framework = new_framework(tmp_path, export_json_api=True)
     framework.cloud = ["AWS"]
     framework.callbacks["basic-123456.abc.oastify.com"].append(
         {"url": "http://basic-123456.abc.oastify.com"}
+    )
+    framework.scan_attempts.append(
+        ScanAttempt(
+            phase="Basic",
+            technique="param url",
+            target="example.com",
+            tested_url="https://example.com/?url=http%3A%2F%2Fbasic-123456.abc.oastify.com",
+            endpoint="/",
+            param="url",
+            payload="http://basic-123456.abc.oastify.com",
+            status=200,
+            vulnerable=False,
+            result="not_confirmed",
+        )
     )
 
     framework.export_json_api()
@@ -268,7 +387,44 @@ def test_json_api_export_writes_a_small_summary(tmp_path):
     assert data["cloud"] == ["AWS"]
     assert data["is_vulnerable_to_ssrf"] is False
     assert data["status"] == "not_confirmed"
-    assert "attempt_summary" in data
+    assert data["callbacks"] == 1
+    assert data["attempt_summary"]["total"] == 1
+    assert data["attempt_summary"]["not_confirmed"] == 1
+    assert data["attempt_summary"]["vulnerable"] == 0
+    assert data["attempt_summary"]["errors"] == 0
     assert "vulnerable_payloads" in data
     assert "not_confirmed_payloads" in data
     assert "errors" in data
+    assert "ai_suggestions" in data
+    assert "other_issue_attempts" in data
+
+
+def test_json_api_export_marks_vulnerable_when_attempt_confirmed(tmp_path):
+    framework = new_framework(tmp_path, export_json_api=True)
+    framework.scan_attempts.append(
+        ScanAttempt(
+            phase="Basic",
+            technique="param url",
+            target="example.com",
+            tested_url="https://example.com/?url=http%3A%2F%2Fbasic-123456.abc.oastify.com",
+            endpoint="/",
+            param="url",
+            payload="http://basic-123456.abc.oastify.com",
+            status=200,
+            vulnerable=True,
+            result="vulnerable",
+            severity="critical",
+            confidence="high",
+            matched_patterns=["[CRITICAL] OOB callback host requested"],
+        )
+    )
+
+    framework.export_json_api()
+
+    report = tmp_path / "api_report_example.com.json"
+    data = json.loads(report.read_text())
+
+    assert data["is_vulnerable_to_ssrf"] is True
+    assert data["status"] == "vulnerable"
+    assert data["attempt_summary"]["vulnerable"] == 1
+    assert len(data["vulnerable_payloads"]) == 1
