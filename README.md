@@ -19,6 +19,16 @@ Created and maintained by **belladonnask**.
 </div>
 
 ---
+
+## Demo
+
+<div align="center">
+
+<img src="docs/demo.gif" alt="Ultimate SSRF Framework Demo" width="100%">
+
+</div>
+
+---
 ## Banner licensing
 
 Banner created by the designer https://x.com/Fezitooo1 < Go check him out!
