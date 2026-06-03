@@ -21,7 +21,7 @@ Created and maintained by **belladonnask**.
 ---
 ## Banner licensing
 
-Banner created by the designer https://x.com/Fezitooo1 < Go check him out no AI was used during the creation of the banner.
+Banner created by the designer https://x.com/Fezitooo1 < Go check him out!
 
 ## Important read first!!!
 
