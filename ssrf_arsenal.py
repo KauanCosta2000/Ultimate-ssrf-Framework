@@ -33,25 +33,37 @@ except ImportError:
     NETWORKX_AVAILABLE = False
 
 
-RED = "[91m"; GREEN = "[92m"; YELLOW = "[93m"; BLUE = "[94m"
-MAGENTA = "[95m"; CYAN = "[96m"; PURPLE = "[35m"; BLACK = "[30m"
-BOLD = "[1m"; DIM = "[2m"; RESET = "[0m"
-OK = f"{GREEN}[OK]{RESET}"; WARN = f"{YELLOW}[!]{RESET}"; FAIL = f"{RED}[X]{RESET}"
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+MAGENTA = "\033[95m"
+CYAN = "\033[96m"
+PURPLE = "\033[35m"
+BLACK = "\033[90m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+OK = f"{GREEN}[OK]{RESET}"
+WARN = f"{YELLOW}[!]{RESET}"
+FAIL = f"{RED}[X]{RESET}"
 AI_ICON = f"{PURPLE}[AI]{RESET}"
 
-BANNER = f"""{BOLD}{RED}
- _______  _______  _______  _______     _______  _______  _______  _______  _______  _        _______  _______  _
-(  ____ \(  ____ \(  ____ \(  ____ \   (  ____ \(  ____ )(  ___  )(       )(  ____ \( \      (  ___  )(  ____ )( \
-| (    \/| (    \/| (    \/| (    \/   | (    \/| (    )|| (   ) || () () || (    \/| (      | (   ) || (    )|| (
-| (_____ | (_____ | (__    | (__       | (__    | (____)|| (___) || || || || (__    | |      | |   | || (____)|| |
-(_____  )(_____  )|  __)   |  __)      |  __)   |     __)|  ___  || |(_)| ||  __)   | |      | |   | ||     __)| |
-      ) |      ) || (      | (         | (      | (\ (   | (   ) || |   | || (      | |      | |   | || (\ (   (_)
-/\____) |/\____) || )      | )         | )      | ) \ \__| )   ( || )   ( || (____/\| (____/\| (___) || ) \ \__ _
-\_______)\_______)|/       |/          |/       |/   \__/|/     \||/     \|(_______/(_______/(_______)|/   \__/(_)
-{RESET}
-{BOLD}{RED}bella{RESET}{BOLD}{BLACK}donnask{RESET} {DIM}| Ultimate SSRF Framework v5.0 - WAF-Aware Edition{RESET}
-{DIM}github.com/KauanCosta2000/Ultimate-ssrf-Framework{RESET}
+BANNER_ART = r"""
+   _____ _____ _____  ______   ______                                          
+  / ____/ ____|  __ \|  ____| |  ____|                                         
+ | (___| (___ | |__) | |__    | |__ _ __ __ _ _ __ ___   _____      _____  _ __| | __
+  \___ \___ \|  _  /|  __|   |  __| '__/ _` | '_ ` _ \ / _ \ \ /\ / / _ \| '__| |/ /
+  ____) |___) | | \ \| |      | |  | | | (_| | | | | | |  __/\ V  V / (_) | |  |   <
+ |_____/_____/|_|  \_\_|      |_|  |_|  \__,_|_| |_| |_|\___| \_/\_/ \___/|_|  |_|\_\
 """
+
+BANNER = (
+    f"{BOLD}{RED}{BANNER_ART}{RESET}\n"
+    f"{BOLD}{RED}bella{RESET}{BOLD}{BLACK}donnask{RESET} "
+    f"{DIM}| Ultimate SSRF Framework v5.0 - WAF-Aware Edition{RESET}\n"
+    f"{DIM}github.com/KauanCosta2000/Ultimate-ssrf-Framework{RESET}\n"
+)
 
 
 DEFAULT_SSRF_PAYLOADS = [
