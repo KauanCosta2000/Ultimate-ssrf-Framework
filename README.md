@@ -9,8 +9,11 @@
 The framework focuses on safe SSRF testing, callback validation, local/reflected SSRF checks, AI-assisted payload generation, MITRE ATT&CK mapping, remediation guidance and clean HTML reports for security teams.
 
 > Built by **belladonnask**
+
 > GitHub: https://github.com/KauanCosta2000
+
 > LinkedIn: https://www.linkedin.com/in/kauan-costa-105b12345/
+
 > Banner created by [@Fezitooo1](https://x.com/Fezitooo1)
 
 <p align="center">
