@@ -139,6 +139,8 @@ def setup_argparse():
     target_group.add_argument("--targets")
     target_group.add_argument("--target-file", "-f")
     parser.add_argument("--param", help="Specific parameter to test on a single target. Only supported with --target.")
+    parser.add_argument("--payload", action="append", help="Custom SSRF payload to test. Can be used multiple times.")
+    parser.add_argument("--payload-file", help="File containing custom payloads, one per line.")
     parser.add_argument("--callback", "-c")
     parser.add_argument("--collaborator")
     parser.add_argument("--burp-collaborator")
@@ -233,6 +235,27 @@ class ProxyManager:
             p = self.list[self.idx % len(self.list)]
             self.idx += 1
             return p
+
+
+def load_custom_payloads(payloads=None, payload_file=None):
+    items = []
+    for payload in payloads or []:
+        payload = str(payload).strip()
+        if payload:
+            items.append(payload)
+    if payload_file:
+        with open(payload_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    items.append(line)
+    deduped = []
+    seen = set()
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
 
 
 SHEEP_BASE_URL = "https://sheep.byfranke.com"
@@ -579,6 +602,7 @@ class UltimateSSRFFramework:
         self.verbose = not args.quiet
         self.headless = not args.visible
         self.user_param = getattr(args, "param", None)
+        self.custom_payloads = load_custom_payloads(getattr(args, "payload", None), getattr(args, "payload_file", None))
         self.proxy = args.proxy
         self.proxy_file = args.proxy_file
         self.proxy_type = args.proxy_type
@@ -713,6 +737,9 @@ class UltimateSSRFFramework:
             (r'169\.254\.\d{1,3}\.\d{1,3}', 'Cloud metadata IP', 'high'),
             (r'10\.\d{1,3}\.\d{1,3}\.\d{1,3}', 'Internal IP', 'high'),
             (r'192\.168\.\d{1,3}\.\d{1,3}', 'Internal IP', 'high'),
+            (r'\$username\s*=|\$password\s*=|\$adminURL\s*=', 'Sensitive PHP configuration disclosure', 'critical'),
+            (r'DB_(HOST|USER|USERNAME|PASSWORD|PASS)\s*=|database_password|mysql_password', 'Database configuration disclosure', 'critical'),
+            (r'private_key|api[_-]?key|secret[_-]?key|access[_-]?token', 'Sensitive secret marker', 'high'),
         ]
         matched = []
         combined = (body + json.dumps(headers)).lower()
@@ -865,12 +892,25 @@ class UltimateSSRFFramework:
                 return ctx
         return {}
 
+    def _payloads_for_basic_phase(self):
+        payloads = []
+        if self.custom_payloads:
+            payloads.extend(self.custom_payloads)
+        payloads.append(self.make_callback_url("basic"))
+        deduped = []
+        seen = set()
+        for payload in payloads:
+            if payload not in seen:
+                seen.add(payload)
+                deduped.append(payload)
+        return deduped
+
     async def basic(self):
         if self.verbose: print(f"\n{CYAN}[BASIC]{RESET} Common SSRF parameters...")
         for ep in self.endpoints[:5]:
             for param in self._params_for_endpoint(ep, fallback=["url", "uri", "file", "path", "redirect"]):
-                payload = self.make_callback_url("basic")
-                await self.test_payload(ep, param, payload, "Basic", f"param {param}")
+                for payload in self._payloads_for_basic_phase():
+                    await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
 
     async def phase_graphql_ssrf(self):
@@ -1161,6 +1201,7 @@ class UltimateSSRFFramework:
             "total_findings": len(self.evidence),
             "unique_findings": len(self._dedup()),
             "callbacks": len(self.callbacks),
+            "custom_payloads": self.custom_payloads,
             "attempt_summary": {
                 "total": len(attempts),
                 "vulnerable": len(vulnerable_attempts),
@@ -1290,6 +1331,8 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}\n{BOLD}Target:{RESET} {self.target}\n{BOLD}Callback:{RESET} {self.cb}")
         if self.dangerous_payloads: print(f"{BOLD}{RED}DANGEROUS payloads enabled!{RESET}")
+        if self.custom_payloads and self.verbose:
+            print(f"{OK} Loaded {len(self.custom_payloads)} custom payloads")
         await self.start()
         try:
             await self.discover()
@@ -1327,6 +1370,8 @@ async def main():
     args = parser.parse_args()
     if args.param and not args.target:
         parser.error("--param can only be used with --target. For mass scanning, omit --param and let the framework discover parameters automatically.")
+    if args.payload_file and not Path(args.payload_file).is_file():
+        parser.error(f"--payload-file not found: {args.payload_file}")
     print(BANNER)
 
     targets = TargetManager.from_args(args)
