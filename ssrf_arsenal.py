@@ -142,6 +142,7 @@ def setup_argparse():
     parser.add_argument("--callback", "-c")
     parser.add_argument("--collaborator")
     parser.add_argument("--burp-collaborator")
+    parser.add_argument("--scheme", choices=["http", "https"], default="https", help="Target URL scheme to use when --target does not include http:// or https://")
     parser.add_argument("--delay", "-d", type=float, default=0.3)
     parser.add_argument("--quiet", "-q", action="store_true")
     parser.add_argument("--visible", action="store_true")
@@ -189,9 +190,14 @@ class TargetManager:
     @staticmethod
     def _clean(domain):
         d = domain.strip()
-        if not d: return None
-        d = re.sub(r'^https?://', '', d).split('/')[0]
-        return d
+        if not d:
+            return None
+        parsed = urllib.parse.urlparse(d if "://" in d else f"//{d}")
+        host = parsed.netloc or parsed.path.split("/")[0]
+        scheme = parsed.scheme if parsed.scheme in ("http", "https") else None
+        if not host:
+            return None
+        return f"{scheme}://{host}" if scheme else host
 
     @staticmethod
     def _from_file(path):
@@ -561,8 +567,14 @@ class WAFFingerprinter:
 class UltimateSSRFFramework:
     def __init__(self, target, args):
         self.target = target
-        self.base = f"https://{target}" if not target.startswith("http") else target
-        self.cb = (args.callback or args.collaborator or args.burp_collaborator or f"{target}.ssrf-test.local")
+        self.scheme = getattr(args, "scheme", "https")
+        if target.startswith(("http://", "https://")):
+            self.base = target.rstrip("/")
+            parsed_target = urllib.parse.urlparse(target)
+            self.target = parsed_target.netloc or target
+        else:
+            self.base = f"{self.scheme}://{target}".rstrip("/")
+        self.cb = (args.callback or args.collaborator or args.burp_collaborator or f"{self.target}.ssrf-test.local")
         self.delay = args.delay
         self.verbose = not args.quiet
         self.headless = not args.visible
