@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 
-import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse, time, subprocess
+import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse, time, subprocess, threading, select
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple
 from collections import defaultdict
 from pathlib import Path
 from playwright.async_api import async_playwright, Response, Page
+
+try:
+    import termios, tty
+    TERMINAL_HOTKEY_AVAILABLE = True
+except ImportError:
+    TERMINAL_HOTKEY_AVAILABLE = False
 
 try:
     import aiohttp
@@ -290,9 +296,13 @@ def setup_argparse():
     parser.add_argument("--delay", "-d", type=float, default=0.3)
     parser.add_argument("--quiet", "-q", action="store_true")
     parser.add_argument("--visible", action="store_true")
-    parser.add_argument("--no-update-check", action="store_true", help="Skip the startup Git update check prompt")
-    parser.add_argument("--auto-update", action="store_true", help="Automatically pull updates without asking")
-    parser.add_argument("--no-update-deps", action="store_true", help="Do not reinstall requirements.txt after updating")
+    parser.add_argument("--update", action="store_true", help="Pull the latest code from the configured update branch and exit")
+    parser.add_argument("--update-branch", default="main", help="Git branch used for updates. Default: main")
+    parser.add_argument("--no-update-check", action="store_true", help="Do not ask for update check at startup")
+    parser.add_argument("--auto-update", action="store_true", help="Pull updates from the update branch without asking")
+    parser.add_argument("--no-update-deps", action="store_true", help="Do not reinstall requirements.txt after update")
+    parser.add_argument("--cancel-key", default="q", help="Keyboard key used to safely cancel a running scan. Default: q")
+    parser.add_argument("--no-cancel-hotkey", action="store_true", help="Disable interactive cancel hotkey during scans")
     proxy_group = parser.add_argument_group("Proxy")
     proxy_group.add_argument("--proxy", "-p")
     proxy_group.add_argument("--proxy-file")
@@ -322,6 +332,67 @@ def setup_argparse():
     export_group.add_argument("--output", "-o", default=".")
     return parser
 
+
+
+def _run_local_command(cmd, timeout=120):
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
+        return proc.returncode, proc.stdout.strip()
+    except Exception as e:
+        return 1, str(e)
+
+
+def perform_git_update(branch="main", install_deps=True):
+    branch = branch or "main"
+    print(f"{CYAN}[UPDATE]{RESET} Checking origin/{branch}...")
+    if not Path(".git").exists():
+        print(f"{WARN} Not inside a Git repository. Skipping update.")
+        return False
+    code, output = _run_local_command(["git", "fetch", "origin", branch], timeout=120)
+    if output:
+        print(output)
+    if code != 0:
+        print(f"{FAIL} git fetch failed")
+        return False
+    code, local = _run_local_command(["git", "rev-parse", "HEAD"], timeout=30)
+    code2, remote = _run_local_command(["git", "rev-parse", f"origin/{branch}"], timeout=30)
+    if code == 0 and code2 == 0 and local == remote:
+        print(f"{OK} Already up to date with origin/{branch}")
+        return True
+    print(f"{CYAN}[UPDATE]{RESET} Pulling latest changes from origin/{branch}...")
+    code, output = _run_local_command(["git", "pull", "--ff-only", "origin", branch], timeout=180)
+    if output:
+        print(output)
+    if code != 0:
+        print(f"{FAIL} git pull failed. Resolve local changes or run manually.")
+        return False
+    if install_deps and Path("requirements.txt").is_file():
+        print(f"{CYAN}[UPDATE]{RESET} Installing requirements.txt...")
+        code, output = _run_local_command([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], timeout=240)
+        if output:
+            print(output)
+        if code != 0:
+            print(f"{WARN} Dependency install failed. Code updated, but dependencies may need manual install.")
+            return False
+    print(f"{OK} Update completed from origin/{branch}")
+    return True
+
+
+def maybe_check_for_updates(args):
+    if getattr(args, "no_update_check", False):
+        return
+    branch = getattr(args, "update_branch", "main") or "main"
+    if getattr(args, "auto_update", False):
+        perform_git_update(branch=branch, install_deps=not getattr(args, "no_update_deps", False))
+        return
+    if not sys.stdin.isatty():
+        return
+    try:
+        answer = input(f"{CYAN}Check for updates from origin/{branch}? [y/N]: {RESET}").strip().lower()
+    except EOFError:
+        return
+    if answer in ("y", "yes", "s", "sim"):
+        perform_git_update(branch=branch, install_deps=not getattr(args, "no_update_deps", False))
 
 class TargetManager:
     @staticmethod
@@ -876,11 +947,70 @@ class UltimateSSRFFramework:
         self.waf = WAFFingerprinter()
         self.playwright = None; self.browser = None; self.page = None
         self.sem = asyncio.Semaphore(15)
+        self.cancel_key = (getattr(args, "cancel_key", "q") or "q")[0].lower()
+        self.no_cancel_hotkey = getattr(args, "no_cancel_hotkey", False)
+        self.cancel_requested = False
+        self.cancel_reason = None
+        self._cancel_stop_event = None
+        self._cancel_thread = None
 
         safe = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.json_file = self.output_dir / f"ssrf_{safe}_{ts}.json"
         self.html_file = self.output_dir / f"ssrf_report_{safe}_{ts}.html"
+
+
+    def _request_cancel(self, reason="user requested cancellation"):
+        if not self.cancel_requested:
+            self.cancel_requested = True
+            self.cancel_reason = reason
+            print(f"\n{YELLOW}[CANCEL]{RESET} Safe cancellation requested. Finishing current request and writing partial reports...")
+
+    def _start_cancel_listener(self):
+        if self.no_cancel_hotkey or self.cancel_requested:
+            return
+        if not sys.stdin.isatty():
+            return
+        if self._cancel_thread and self._cancel_thread.is_alive():
+            return
+        self._cancel_stop_event = threading.Event()
+        key = self.cancel_key
+        print(f"{DIM}[CANCEL] Press {key.upper()} to cancel safely during the scan. Ctrl+C still forces stop.{RESET}")
+
+        def worker():
+            fd = sys.stdin.fileno()
+            old_settings = None
+            try:
+                if TERMINAL_HOTKEY_AVAILABLE:
+                    old_settings = termios.tcgetattr(fd)
+                    tty.setcbreak(fd)
+                while not self._cancel_stop_event.is_set() and not self.cancel_requested:
+                    try:
+                        ready, _, _ = select.select([sys.stdin], [], [], 0.2)
+                    except Exception:
+                        break
+                    if not ready:
+                        continue
+                    ch = sys.stdin.read(1)
+                    if ch and ch.lower() == key:
+                        self._request_cancel(f"cancel key {key} pressed")
+                        break
+            finally:
+                if old_settings is not None:
+                    try:
+                        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    except Exception:
+                        pass
+
+        self._cancel_thread = threading.Thread(target=worker, daemon=True)
+        self._cancel_thread.start()
+
+    def _stop_cancel_listener(self):
+        if self._cancel_stop_event:
+            self._cancel_stop_event.set()
+
+    def _should_stop(self):
+        return bool(self.cancel_requested)
 
     async def start(self):
         self.playwright = await async_playwright().start()
@@ -1042,11 +1172,19 @@ class UltimateSSRFFramework:
             sep = "&" if "?" in ep.path else "?"
             url = f"{self.base}{ep.path}{sep}{param}={urllib.parse.quote(payload)}"
             self._register_callback_context(payload, ep.path, param, phase, technique)
+            if self.verbose:
+                print(f"  {BLUE}[REQ]{RESET} GET {url} phase={phase} endpoint={ep.path} param={param} payload={payload}")
+            started_at = time.time()
             status, body, headers = await self.request("GET", url, headers=extra_headers)
+            elapsed = time.time() - started_at
         else:
             url = f"{self.base}{ep.path}"
             self._register_callback_context(payload, ep.path, param, phase, technique)
+            if self.verbose:
+                print(f"  {BLUE}[REQ]{RESET} POST {url} phase={phase} endpoint={ep.path} param={param} payload={payload}")
+            started_at = time.time()
             status, body, headers = await self.request("POST", url, {param: payload}, headers=extra_headers)
+            elapsed = time.time() - started_at
 
         findings = await self.check_evidence(phase, technique, url, ep.path, param, payload, status, body, headers)
         error = headers.get("_error") if isinstance(headers,dict) else None
@@ -1069,6 +1207,9 @@ class UltimateSSRFFramework:
             matched_patterns=matched_patterns, error=error,
             body_snippet=self._make_body_snippet(body), content_length=len(body or "")
         ))
+        if self.verbose:
+            color = RED if vulnerable else (YELLOW if error else GREEN if 200 <= int(status or 0) < 300 else DIM)
+            print(f"  {color}[{status}] {result.upper()}{RESET} bytes={len(body or '')} time={elapsed:.2f}s")
         return vulnerable
 
     async def test_url_template_payload(self, payload, phase="Direct URL", technique="Exact URL template"):
@@ -1085,7 +1226,11 @@ class UltimateSSRFFramework:
             return False
         tested_url = self.url_template.replace("PAYLOAD", urllib.parse.quote(payload, safe="/:"))
         self._register_callback_context(payload, "/", self.user_param or "url", phase, technique)
+        if self.verbose:
+            print(f"  {BLUE}[REQ]{RESET} GET {tested_url} phase={phase} endpoint=/ param={self.user_param or 'url'} payload={payload}")
+        started_at = time.time()
         status, body, headers = await self.direct_http_request("GET", tested_url)
+        elapsed = time.time() - started_at
         findings = await self.check_evidence(
             phase,
             technique,
@@ -1134,12 +1279,10 @@ class UltimateSSRFFramework:
             content_length=len(body or ""),
         ))
         if self.verbose:
-            if vulnerable:
-                print(f"  {RED}[VULNERABLE]{RESET} {tested_url}")
-            elif error:
-                print(f"  {DIM}[ERROR]{RESET} {tested_url} error={error}")
-            else:
-                print(f"  {DIM}[NOT CONFIRMED]{RESET} {tested_url}")
+            color = RED if vulnerable else (YELLOW if error else GREEN if 200 <= int(status or 0) < 300 else DIM)
+            print(f"  {color}[{status}] {result.upper()}{RESET} bytes={len(body or '')} time={elapsed:.2f}s")
+            if error:
+                print(f"  {DIM}error={error}{RESET}")
         return vulnerable
 
     async def discover(self):
@@ -1249,10 +1392,25 @@ class UltimateSSRFFramework:
         endpoints = [ep for ep in self._prioritized_endpoints() if not self._is_static_asset(ep.path)][:5]
         if not endpoints:
             endpoints = self._prioritized_endpoints()[:3]
+        planned = sum(len(self._params_for_endpoint(ep, fallback=["url", "uri", "file", "path", "redirect"])[:5]) * len(payloads) for ep in endpoints)
+        current = 0
+        if self.verbose:
+            print(f"  {DIM}planned_requests={planned} endpoints={len(endpoints)} payloads={len(payloads)}{RESET}")
         for ep in endpoints:
+            if self._should_stop():
+                break
             params = self._params_for_endpoint(ep, fallback=["url", "uri", "file", "path", "redirect"])[:5]
             for param in params:
+                if self._should_stop():
+                    break
+                if self.verbose:
+                    print(f"  {CYAN}[PARAM]{RESET} endpoint={ep.path} param={param} payloads={len(payloads)}")
                 for payload in payloads:
+                    if self._should_stop():
+                        break
+                    current += 1
+                    if self.verbose:
+                        print(f"  {DIM}[{current}/{planned}]{RESET}")
                     await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
 
@@ -2060,12 +2218,15 @@ class UltimateSSRFFramework:
             print(f"{OK} Manual paths: {', '.join(self.manual_paths)}")
         if self.custom_payloads and self.verbose:
             print(f"{OK} Loaded {len(self.custom_payloads)} custom payloads")
+        self._start_cancel_listener()
         if self.url_template:
             payloads = self.custom_payloads or THM_LOCAL_SSRF_PAYLOADS or ["localhost/config"]
             if self.verbose:
                 print(f"\n{CYAN}[DIRECT URL]{RESET} Testing exact URL template...")
             try:
                 for payload in payloads:
+                    if self._should_stop():
+                        break
                     await self.test_url_template_payload(payload, "Direct URL", "Exact URL template")
                 if not self.evidence and self.verbose:
                     print(f"\n{OK} No confirmed SSRF findings detected. Generating not_confirmed report.")
@@ -2079,6 +2240,7 @@ class UltimateSSRFFramework:
                 self.print_summary()
                 return
             finally:
+                self._stop_cancel_listener()
                 await self.stop()
         await self.start()
         try:
@@ -2092,14 +2254,24 @@ class UltimateSSRFFramework:
                         bypass = self.waf_info.get("bypass_suggestions", [])
                         if bypass: print(f"  {DIM}Bypass suggestions: {', '.join(bypass[:5])}{RESET}")
                     else: print(f"\n{CYAN}[WAF]{RESET} None detected")
-            await self.detect_cloud()
-            await self.basic()
-            await self.phase_graphql_ssrf()
-            await self.phase_api_schema_bypass()
-            await self.phase_service_mesh_ssrf()
-            await self.phase_bot_evasion()
-            await self.phase_kubernetes_ingress_bypass()
-            await self.run_ai_phases()
+            if not self._should_stop():
+                await self.detect_cloud()
+            if not self._should_stop():
+                await self.basic()
+            if not self._should_stop():
+                await self.phase_graphql_ssrf()
+            if not self._should_stop():
+                await self.phase_api_schema_bypass()
+            if not self._should_stop():
+                await self.phase_service_mesh_ssrf()
+            if not self._should_stop():
+                await self.phase_bot_evasion()
+            if not self._should_stop():
+                await self.phase_kubernetes_ingress_bypass()
+            if not self._should_stop():
+                await self.run_ai_phases()
+            if self._should_stop() and self.verbose:
+                print(f"\n{WARN} Scan cancelled safely. Generating partial report.")
             if not self.evidence and self.verbose:
                 print(f"\n{OK} No confirmed SSRF findings detected. Generating not_confirmed report.")
             self.export_nuclei()
@@ -2111,93 +2283,8 @@ class UltimateSSRFFramework:
             await self.save_json()
             self.print_summary()
         finally:
+            self._stop_cancel_listener()
             await self.stop()
-
-
-def _run_update_command(cmd, cwd=None):
-    try:
-        result = subprocess.run(cmd, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
-    except Exception as e:
-        return 1, "", str(e)
-
-
-def _inside_git_repo():
-    code, out, _ = _run_update_command(["git", "rev-parse", "--show-toplevel"])
-    if code != 0 or not out:
-        return None
-    return out.splitlines()[0].strip()
-
-
-def check_for_updates(args):
-    if getattr(args, "no_update_check", False):
-        return
-
-    repo_root = _inside_git_repo()
-    if not repo_root:
-        if sys.stdin.isatty():
-            print(f"{DIM}[UPDATE] Not inside a Git repository. Skipping update check.{RESET}")
-        return
-
-    code, branch, err = _run_update_command(["git", "branch", "--show-current"], cwd=repo_root)
-    branch = branch or "current-branch"
-    if code != 0:
-        print(f"{WARN} Could not detect Git branch: {err}")
-        return
-
-    print(f"{CYAN}[UPDATE]{RESET} Checking for updates on branch {BOLD}{branch}{RESET}...")
-    code, _, err = _run_update_command(["git", "fetch", "--quiet", "origin"], cwd=repo_root)
-    if code != 0:
-        print(f"{WARN} Could not fetch updates: {err}")
-        return
-
-    code, local, _ = _run_update_command(["git", "rev-parse", "HEAD"], cwd=repo_root)
-    code2, remote, remote_err = _run_update_command(["git", "rev-parse", f"origin/{branch}"], cwd=repo_root)
-    if code != 0 or code2 != 0 or not local or not remote:
-        print(f"{WARN} Could not compare local branch with origin/{branch}: {remote_err}")
-        return
-
-    if local == remote:
-        print(f"{OK} Framework is up to date.")
-        return
-
-    print(f"{YELLOW}[UPDATE]{RESET} Updates are available from origin/{branch}.")
-
-    should_update = getattr(args, "auto_update", False)
-    if not should_update:
-        if not sys.stdin.isatty():
-            print(f"{DIM}[UPDATE] Non-interactive shell detected. Run with --auto-update or update manually with git pull --ff-only.{RESET}")
-            return
-        answer = input(f"{BOLD}Check for updates now? Pull latest changes? [y/N]: {RESET}").strip().lower()
-        should_update = answer in ("y", "yes", "s", "sim")
-
-    if not should_update:
-        print(f"{DIM}[UPDATE] Skipped by user.{RESET}")
-        return
-
-    code, out, err = _run_update_command(["git", "pull", "--ff-only"], cwd=repo_root)
-    if code != 0:
-        print(f"{FAIL} Update failed. Resolve Git state manually.")
-        if out:
-            print(out)
-        if err:
-            print(err)
-        return
-
-    print(f"{OK} Updated successfully.")
-    if out:
-        print(out)
-
-    requirements = Path(repo_root) / "requirements.txt"
-    if requirements.is_file() and not getattr(args, "no_update_deps", False):
-        print(f"{CYAN}[UPDATE]{RESET} Installing dependencies from requirements.txt...")
-        code, out, err = _run_update_command([sys.executable, "-m", "pip", "install", "-r", str(requirements)], cwd=repo_root)
-        if code == 0:
-            print(f"{OK} Dependencies updated.")
-        else:
-            print(f"{WARN} Dependency update failed. Run manually: python -m pip install -r requirements.txt")
-            if err:
-                print(err)
 
 async def main():
     parser = setup_argparse()
@@ -2207,7 +2294,10 @@ async def main():
     if args.payload_file and not Path(args.payload_file).is_file():
         parser.error(f"--payload-file not found: {args.payload_file}")
     print(BANNER)
-    check_for_updates(args)
+    if getattr(args, "update", False):
+        perform_git_update(branch=getattr(args, "update_branch", "main"), install_deps=not getattr(args, "no_update_deps", False))
+        return
+    maybe_check_for_updates(args)
 
     targets = TargetManager.from_args(args)
     if not targets:
