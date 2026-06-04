@@ -925,7 +925,7 @@ class UltimateSSRFFramework:
         except Exception: pass
         await route.continue_()
 
-    async def request(self, method, url, data=None, headers=None, timeout=15000):
+    async def request(self, method, url, data=None, headers=None, timeout=8000):
         async with self.sem:
             try:
                 safe_url = json.dumps(url)
@@ -1240,10 +1240,16 @@ class UltimateSSRFFramework:
         return deduped
 
     async def basic(self):
-        if self.verbose: print(f"\n{CYAN}[BASIC]{RESET} Common SSRF parameters...")
-        for ep in self.endpoints[:5]:
-            for param in self._params_for_endpoint(ep, fallback=["url", "uri", "file", "path", "redirect"]):
-                for payload in self._payloads_for_basic_phase():
+        if self.verbose:
+            print(f"\n{CYAN}[BASIC]{RESET} Common SSRF parameters...")
+        payloads = self._payloads_for_basic_phase()[:10]
+        endpoints = [ep for ep in self._prioritized_endpoints() if not self._is_static_asset(ep.path)][:5]
+        if not endpoints:
+            endpoints = self._prioritized_endpoints()[:3]
+        for ep in endpoints:
+            params = self._params_for_endpoint(ep, fallback=["url", "uri", "file", "path", "redirect"])[:5]
+            for param in params:
+                for payload in payloads:
                     await self.test_payload(ep, param, payload, "Basic", f"param {param}")
 
 
@@ -2051,12 +2057,11 @@ class UltimateSSRFFramework:
             print(f"{OK} Manual paths: {', '.join(self.manual_paths)}")
         if self.custom_payloads and self.verbose:
             print(f"{OK} Loaded {len(self.custom_payloads)} custom payloads")
-        await self.start()
-        try:
-            if self.url_template:
-                payloads = self.custom_payloads or ["localhost/config"]
-                if self.verbose:
-                    print(f"\n{CYAN}[DIRECT URL]{RESET} Testing exact URL template...")
+        if self.url_template:
+            payloads = self.custom_payloads or THM_LOCAL_SSRF_PAYLOADS or ["localhost/config"]
+            if self.verbose:
+                print(f"\n{CYAN}[DIRECT URL]{RESET} Testing exact URL template...")
+            try:
                 for payload in payloads:
                     await self.test_url_template_payload(payload, "Direct URL", "Exact URL template")
                 if not self.evidence and self.verbose:
@@ -2070,6 +2075,10 @@ class UltimateSSRFFramework:
                 await self.save_json()
                 self.print_summary()
                 return
+            finally:
+                await self.stop()
+        await self.start()
+        try:
             await self.discover()
             if not self.no_waf:
                 s, b, h = await self.request("GET", self.base)
