@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse, time
+import asyncio, json, random, re, urllib.parse, os, sys, socket, argparse, time, subprocess
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple
@@ -290,6 +290,9 @@ def setup_argparse():
     parser.add_argument("--delay", "-d", type=float, default=0.3)
     parser.add_argument("--quiet", "-q", action="store_true")
     parser.add_argument("--visible", action="store_true")
+    parser.add_argument("--no-update-check", action="store_true", help="Skip the startup Git update check prompt")
+    parser.add_argument("--auto-update", action="store_true", help="Automatically pull updates without asking")
+    parser.add_argument("--no-update-deps", action="store_true", help="Do not reinstall requirements.txt after updating")
     proxy_group = parser.add_argument_group("Proxy")
     proxy_group.add_argument("--proxy", "-p")
     proxy_group.add_argument("--proxy-file")
@@ -2110,6 +2113,92 @@ class UltimateSSRFFramework:
         finally:
             await self.stop()
 
+
+def _run_update_command(cmd, cwd=None):
+    try:
+        result = subprocess.run(cmd, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def _inside_git_repo():
+    code, out, _ = _run_update_command(["git", "rev-parse", "--show-toplevel"])
+    if code != 0 or not out:
+        return None
+    return out.splitlines()[0].strip()
+
+
+def check_for_updates(args):
+    if getattr(args, "no_update_check", False):
+        return
+
+    repo_root = _inside_git_repo()
+    if not repo_root:
+        if sys.stdin.isatty():
+            print(f"{DIM}[UPDATE] Not inside a Git repository. Skipping update check.{RESET}")
+        return
+
+    code, branch, err = _run_update_command(["git", "branch", "--show-current"], cwd=repo_root)
+    branch = branch or "current-branch"
+    if code != 0:
+        print(f"{WARN} Could not detect Git branch: {err}")
+        return
+
+    print(f"{CYAN}[UPDATE]{RESET} Checking for updates on branch {BOLD}{branch}{RESET}...")
+    code, _, err = _run_update_command(["git", "fetch", "--quiet", "origin"], cwd=repo_root)
+    if code != 0:
+        print(f"{WARN} Could not fetch updates: {err}")
+        return
+
+    code, local, _ = _run_update_command(["git", "rev-parse", "HEAD"], cwd=repo_root)
+    code2, remote, remote_err = _run_update_command(["git", "rev-parse", f"origin/{branch}"], cwd=repo_root)
+    if code != 0 or code2 != 0 or not local or not remote:
+        print(f"{WARN} Could not compare local branch with origin/{branch}: {remote_err}")
+        return
+
+    if local == remote:
+        print(f"{OK} Framework is up to date.")
+        return
+
+    print(f"{YELLOW}[UPDATE]{RESET} Updates are available from origin/{branch}.")
+
+    should_update = getattr(args, "auto_update", False)
+    if not should_update:
+        if not sys.stdin.isatty():
+            print(f"{DIM}[UPDATE] Non-interactive shell detected. Run with --auto-update or update manually with git pull --ff-only.{RESET}")
+            return
+        answer = input(f"{BOLD}Check for updates now? Pull latest changes? [y/N]: {RESET}").strip().lower()
+        should_update = answer in ("y", "yes", "s", "sim")
+
+    if not should_update:
+        print(f"{DIM}[UPDATE] Skipped by user.{RESET}")
+        return
+
+    code, out, err = _run_update_command(["git", "pull", "--ff-only"], cwd=repo_root)
+    if code != 0:
+        print(f"{FAIL} Update failed. Resolve Git state manually.")
+        if out:
+            print(out)
+        if err:
+            print(err)
+        return
+
+    print(f"{OK} Updated successfully.")
+    if out:
+        print(out)
+
+    requirements = Path(repo_root) / "requirements.txt"
+    if requirements.is_file() and not getattr(args, "no_update_deps", False):
+        print(f"{CYAN}[UPDATE]{RESET} Installing dependencies from requirements.txt...")
+        code, out, err = _run_update_command([sys.executable, "-m", "pip", "install", "-r", str(requirements)], cwd=repo_root)
+        if code == 0:
+            print(f"{OK} Dependencies updated.")
+        else:
+            print(f"{WARN} Dependency update failed. Run manually: python -m pip install -r requirements.txt")
+            if err:
+                print(err)
+
 async def main():
     parser = setup_argparse()
     args = parser.parse_args()
@@ -2118,6 +2207,7 @@ async def main():
     if args.payload_file and not Path(args.payload_file).is_file():
         parser.error(f"--payload-file not found: {args.payload_file}")
     print(BANNER)
+    check_for_updates(args)
 
     targets = TargetManager.from_args(args)
     if not targets:
