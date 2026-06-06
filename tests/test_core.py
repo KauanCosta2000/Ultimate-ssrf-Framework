@@ -1,4 +1,5 @@
 import json
+import asyncio
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -11,6 +12,7 @@ from ssrf_arsenal import (
     TargetManager,
     UltimateSSRFFramework,
     WAFFingerprinter,
+    load_custom_payloads,
     setup_argparse,
 )
 
@@ -90,6 +92,24 @@ def test_target_args_accept_comma_list():
     )
 
     assert TargetManager.from_args(args) == ["a.example.com", "b.example.com"]
+
+
+def test_manual_payload_does_not_auto_load_default_payload_file(tmp_path, monkeypatch):
+    (tmp_path / "payloads.txt").write_text("http://169.254.169.254/latest/meta-data/\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    payloads = load_custom_payloads(["localhost/config"], None, "generic")
+
+    assert payloads == ["localhost/config"]
+
+
+def test_default_payload_file_loads_when_no_manual_payloads(tmp_path, monkeypatch):
+    (tmp_path / "payloads.txt").write_text("localhost/config\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    payloads = load_custom_payloads(None, None, "generic")
+
+    assert payloads == ["localhost/config"]
 
 
 def test_argparse_accepts_dangerous_payload_flag():
@@ -210,6 +230,25 @@ def test_framework_defaults_to_url_when_no_params_or_fallback(tmp_path):
         params = set()
 
     assert framework._params_for_endpoint(Endpoint()) == ["url"]
+
+
+def test_reflected_payload_text_is_not_confirmed_as_evidence(tmp_path):
+    framework = new_framework(tmp_path)
+
+    evidence = asyncio.run(framework.check_evidence(
+        phase="Direct URL",
+        technique="Exact URL template",
+        url="https://example.com/fetch?url=http://169.254.169.254/latest/meta-data/",
+        endpoint="/",
+        param="url",
+        payload="http://169.254.169.254/latest/meta-data/",
+        status=200,
+        body="Invalid url parameter: http://169.254.169.254/latest/meta-data/",
+        headers={},
+    ))
+
+    assert evidence == []
+    assert framework.evidence == []
 
 
 def test_waf_fingerprint_detects_cloudflare():
