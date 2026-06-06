@@ -413,10 +413,9 @@ class TargetManager:
             return None
         parsed = urllib.parse.urlparse(d if "://" in d else f"//{d}")
         host = parsed.netloc or parsed.path.split("/")[0]
-        scheme = parsed.scheme if parsed.scheme in ("http", "https") else None
         if not host:
             return None
-        return f"{scheme}://{host}" if scheme else host
+        return host
 
     @staticmethod
     def _from_file(path):
@@ -463,7 +462,7 @@ def load_custom_payloads(payloads=None, payload_file=None, lab_profile="generic"
         payload = str(payload).strip()
         if payload:
             items.append(payload)
-    if payload_file is None and default_payload_file.is_file():
+    if payload_file is None and not items and default_payload_file.is_file():
         payload_file = str(default_payload_file)
     if payload_file:
         with open(payload_file, encoding="utf-8") as f:
@@ -1130,6 +1129,10 @@ class UltimateSSRFFramework:
         body_text = body or ""
         header_text = json.dumps(headers or {})
         combined = body_text + "\n" + header_text
+        payload_text = str(payload or "")
+        if payload_text:
+            combined = combined.replace(payload_text, "")
+            combined = combined.replace(urllib.parse.quote(payload_text, safe="/:"), "")
         for pat, desc, sev in patterns:
             if re.search(pat, combined, re.I | re.S):
                 matched.append(f"[{sev.upper()}] {desc}")
@@ -2202,7 +2205,7 @@ class UltimateSSRFFramework:
         for (ep, param), info in list(deduped.items())[:10]:
             sev = info["max_sev"]
             col = {"critical": RED, "high": YELLOW, "medium": MAGENTA}.get(sev, BLUE)
-            print(f"  {col}[{sev.upper()}]{RESET} {ep} → {param} ({info['oob']} callbacks)")
+            print(f"  {col}[{sev.upper()}]{RESET} {ep} -> {param} ({info['oob']} callbacks)")
         print(f"\n  {DIM}Report: {self.html_file}{RESET}")
         print(f"  {DIM}Results: {self.json_file}{RESET}")
         if self.do_export_mitre:
